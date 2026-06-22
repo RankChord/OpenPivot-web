@@ -23,17 +23,27 @@ function userParticipant(user: UserSummary, relationship: Participant["relations
   };
 }
 
-function requestToContactRequest(request: FriendRequest): ContactRequest {
+function requestToContactRequest(request: FriendRequest, currentUserId: number): ContactRequest {
+  const isOutbound = request.requester_id === currentUserId;
+  const peerId = isOutbound ? request.addressee_id : request.requester_id;
+  const relationship: Participant["relationship"] =
+    request.status === "accepted"
+      ? "connected"
+      : request.status === "rejected" || request.status === "canceled"
+        ? "none"
+        : isOutbound
+          ? "pending_outbound"
+          : "pending_inbound";
   return {
     id: String(request.id),
     sourceId: request.id,
     participant: {
-      id: `user-${request.requester_id}`,
-      sourceId: request.requester_id,
+      id: `user-${peerId}`,
+      sourceId: peerId,
       kind: "unknown",
-      displayName: `用户 ${request.requester_id}`,
-      title: "等待建立联系",
-      relationship: "pending_inbound",
+      displayName: `用户 ${peerId}`,
+      title: relationship === "pending_outbound" ? "联系请求已发送" : relationship === "connected" ? "已建立联系" : "等待建立联系",
+      relationship,
       description: "来自真实后端的联系请求。"
     },
     message: request.message,
@@ -84,7 +94,9 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
 
   private async contactRequests(): Promise<ContactRequest[]> {
     const requests = await this.rust.listFriendRequests().catch(() => []);
-    return requests.map(requestToContactRequest);
+    return requests
+      .filter((request) => request.status === "pending")
+      .map((request) => requestToContactRequest(request, this.currentUserId));
   }
 
   private mergeParticipants(participants: Participant[]): Participant[] {
@@ -151,8 +163,8 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
         relationship: "self",
         description: "当前真实后端登录身份。"
       },
-      ...requests.map((request) => request.participant),
-      ...friends.map((friend) => userParticipant(friend))
+      ...friends.map((friend) => userParticipant(friend)),
+      ...requests.map((request) => request.participant)
     ]);
   }
 
@@ -203,6 +215,7 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
   async createContactRequest(participantId: string, message?: string): Promise<ContactRequest> {
     const sourceId = Number(participantId.replace("user-", ""));
     if (!Number.isFinite(sourceId) || sourceId <= 0) throw new Error("参与者缺少真实后端 ID");
+    const participant = await this.getParticipant(participantId);
     const request = await this.rust.createFriendRequest({ userId: sourceId, message });
     const contactRequest: ContactRequest = {
       id: String(request.id),
@@ -211,7 +224,8 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
         id: `user-${sourceId}`,
         sourceId,
         kind: "unknown",
-        displayName: `用户 ${sourceId}`,
+        displayName: participant?.displayName || `用户 ${sourceId}`,
+        handle: participant?.handle,
         title: "联系请求已发送",
         relationship: "pending_outbound",
         description: "来自真实后端的参与者。"
@@ -225,17 +239,21 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
 
   async acceptContactRequest(requestId: string): Promise<ContactRequest> {
     const request = await this.rust.acceptFriendRequest(Number(requestId));
-    return requestToContactRequest(request);
+    const contactRequest = requestToContactRequest(request, this.currentUserId);
+    this.participantCache.set(contactRequest.participant.id, contactRequest.participant);
+    return contactRequest;
   }
 
   async rejectContactRequest(requestId: string): Promise<ContactRequest> {
     const request = await this.rust.rejectFriendRequest(Number(requestId));
-    return requestToContactRequest(request);
+    const contactRequest = requestToContactRequest(request, this.currentUserId);
+    this.participantCache.set(contactRequest.participant.id, contactRequest.participant);
+    return contactRequest;
   }
 
   async listInboxItems(): Promise<InboxItem[]> {
     const requests = await this.listContactRequests();
-    return requests.map((request) => ({
+    return requests.filter((request) => request.participant.relationship === "pending_inbound").map((request) => ({
       id: `contact-${request.id}`,
       kind: "request",
       priority: "action",

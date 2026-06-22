@@ -81,6 +81,7 @@ const state = {
     { id: 10, requester_id: 2, addressee_id: 1, status: "pending", message: "我想加入协作。" }
   ],
   messages: [],
+  outgoingRequests: [],
   refreshToken: "refresh-initial",
   users: [
     { id: 1, username: "ling", nickname: "Ling" },
@@ -128,11 +129,16 @@ const server = http.createServer(async (req, res) => {
     }
     if (pathName === "/v1/friends" && method === "GET") return json(res, 200, state.friends);
     if (pathName === "/v1/friends/requests" && method === "GET") {
-      return json(res, 200, state.incomingRequests.filter((request) => request.status === "pending"));
+      return json(res, 200, [
+        ...state.incomingRequests,
+        ...state.outgoingRequests
+      ].filter((request) => request.status === "pending"));
     }
     if (pathName === "/v1/friends/requests" && method === "POST") {
       const body = await readBody(req);
-      return json(res, 200, { id: 11, requester_id: 1, addressee_id: body.user_id, status: "pending", message: body.message ?? null });
+      const request = { id: 11 + state.outgoingRequests.length, requester_id: 1, addressee_id: body.user_id, status: "pending", message: body.message ?? null };
+      state.outgoingRequests.push(request);
+      return json(res, 200, request);
     }
     if (pathName === "/v1/friends/requests/10/accept" && method === "POST") {
       const request = state.incomingRequests[0];
@@ -195,6 +201,7 @@ try {
   const outboundCarol = await workspace.createContactRequest("user-3", "hello");
   assert(outboundCarol.participant.relationship === "pending_outbound", "outbound request should cache pending participant state");
   assert((await workspace.getParticipant("user-3"))?.relationship === "pending_outbound", "pending outbound participant should remain route-addressable");
+  assert(!(await workspace.listInboxItems()).some((item) => item.participantId === "user-3"), "pending outbound requests should not appear as inbox actions");
 
   const outbound = await workspace.createContactRequest("user-2", "希望建立联系。");
   assert(outbound.participant.id === "user-2", "outbound contact request should point at the target participant");

@@ -129,6 +129,24 @@ assert(directCarolRejected, "Connected direct spaces require an established rela
 const outboundCarol = await connected.createContactRequest("user-3", "hello");
 assert(outboundCarol.participant.relationship === "pending_outbound", "Connected contact request should cache pending outbound relationship");
 assert((await connected.getParticipant("user-3"))?.relationship === "pending_outbound", "Connected pending outbound participant must remain addressable");
+const restoredRelationships = new ConnectedWorkspaceAdapter({
+  ...rust,
+  listFriendRequests: async () => [
+    { id: 5, requester_id: 1, addressee_id: 3, status: "pending", message: "outbound" },
+    { id: 6, requester_id: 4, addressee_id: 1, status: "pending", message: "inbound" }
+  ]
+}, 1);
+assert((await restoredRelationships.getParticipant("user-3"))?.relationship === "pending_outbound", "Connected outbound requests must restore as pending outbound after reload");
+assert((await restoredRelationships.getParticipant("user-4"))?.relationship === "pending_inbound", "Connected inbound requests must restore as pending inbound after reload");
+const restoredInbox = await restoredRelationships.listInboxItems();
+assert(restoredInbox.some((item) => item.participantId === "user-4"), "Connected inbound requests must appear in the inbox");
+assert(!restoredInbox.some((item) => item.participantId === "user-3"), "Connected outbound requests must not appear as inbox actions");
+const connectedRelationshipWins = new ConnectedWorkspaceAdapter({
+  ...rust,
+  listFriendRequests: async () => [{ id: 7, requester_id: 1, addressee_id: 2, status: "pending", message: "stale outbound" }],
+  listFriends: async () => [{ id: 2, username: "bob", nickname: "Bob" }]
+}, 1);
+assert((await connectedRelationshipWins.getParticipant("user-2"))?.relationship === "connected", "Connected relationships must win over stale pending requests");
 const spaces = await connected.listSpaces();
 assert(spaces[0].id === "conversation-9", "Connected direct conversation must map to a stable space URL");
 assert(spaces[0].kind === "direct", "Connected direct conversation must map to a direct collaboration space");
