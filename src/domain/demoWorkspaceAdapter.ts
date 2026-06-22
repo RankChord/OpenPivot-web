@@ -317,6 +317,21 @@ export class DemoWorkspaceAdapter implements WorkspaceAdapter {
 
   async sendMessage(spaceId: string, content: string, clientId?: string): Promise<SpaceMessage> {
     if (content.includes("失败测试")) {
+      const failedMessage: SpaceMessage = {
+        id: clientId || `demo-${Date.now()}`,
+        spaceId,
+        senderId: "me",
+        kind: "message",
+        blocks: [{ type: "text", text: content }],
+        createdAt: new Date().toISOString(),
+        deliveryState: "failed"
+      };
+      store.messages[spaceId] = [...(store.messages[spaceId] || []).filter((item) => item.id !== failedMessage.id), failedMessage];
+      const space = store.spaces.find((item) => item.id === spaceId);
+      if (space) {
+        space.lastActivityAt = failedMessage.createdAt;
+        space.lastPreview = content;
+      }
       throw new Error("演示发送失败，消息已保留，可重试。");
     }
     const message: SpaceMessage = {
@@ -340,7 +355,22 @@ export class DemoWorkspaceAdapter implements WorkspaceAdapter {
   async retryMessage(spaceId: string, messageId: string): Promise<SpaceMessage> {
     const failed = store.messages[spaceId]?.find((message) => message.id === messageId);
     const text = failed?.blocks.find((block) => block.type === "text")?.text || "重试消息";
-    return this.sendMessage(spaceId, text, messageId);
+    const message: SpaceMessage = {
+      id: messageId,
+      spaceId,
+      senderId: "me",
+      kind: "message",
+      blocks: [{ type: "text", text }],
+      createdAt: new Date().toISOString(),
+      deliveryState: "sent"
+    };
+    store.messages[spaceId] = (store.messages[spaceId] || []).map((item) => item.id === messageId ? message : item);
+    const space = store.spaces.find((item) => item.id === spaceId);
+    if (space) {
+      space.lastActivityAt = message.createdAt;
+      space.lastPreview = text;
+    }
+    return wait(message);
   }
 
   async listParticipants(): Promise<Participant[]> {

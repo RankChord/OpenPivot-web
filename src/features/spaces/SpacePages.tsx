@@ -163,6 +163,23 @@ export function SpaceTimelinePage({ app }: { app: AppContextValue }) {
       navigate(`/spaces/${spaceId}/flows/${flow.id}`);
     }
   });
+  const retryMutation = useMutation({
+    mutationFn: async (messageId: string) => {
+      if (!app.workspace?.retryMessage) throw new Error("当前环境暂不支持消息重试");
+      return app.workspace.retryMessage(spaceId, messageId);
+    },
+    onMutate: async (messageId) => {
+      await queryClient.cancelQueries({ queryKey: ["workspace", app.mode, app.session, "messages", spaceId] });
+      queryClient.setQueryData<SpaceMessage[]>(["workspace", app.mode, app.session, "messages", spaceId], (current = []) => current.map((item) => item.id === messageId ? { ...item, deliveryState: "sending" } : item));
+    },
+    onSuccess: (message) => {
+      queryClient.setQueryData<SpaceMessage[]>(["workspace", app.mode, app.session, "messages", spaceId], (current = []) => current.map((item) => item.id === message.id ? message : item));
+      void queryClient.invalidateQueries({ queryKey: ["workspace", app.mode, app.session, "spaces"] });
+    },
+    onError: (_error, messageId) => {
+      queryClient.setQueryData<SpaceMessage[]>(["workspace", app.mode, app.session, "messages", spaceId], (current = []) => current.map((item) => item.id === messageId ? { ...item, deliveryState: "failed" } : item));
+    }
+  });
 
   const space = spaceQuery.data;
   const participants = participantsQuery.data || [];
@@ -182,6 +199,8 @@ export function SpaceTimelinePage({ app }: { app: AppContextValue }) {
             canCreateFlow={app.environment.capabilities.collaborationFlows}
             onCreateFlow={(messageId) => createFlow.mutate(messageId)}
             createFlowPending={createFlow.isPending}
+            onRetryMessage={app.workspace?.retryMessage ? (messageId) => retryMutation.mutate(messageId) : undefined}
+            retryPending={retryMutation.isPending}
           />
         ))}
         {!messages.length && <EmptyState title="还没有消息" detail="发送第一条消息开始协作。" />}

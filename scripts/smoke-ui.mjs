@@ -221,6 +221,14 @@ function clickLastButtonByText(text) {
   fireEvent.click(buttons.at(-1));
 }
 
+function messageArticles(text) {
+  return Array.from(document.querySelectorAll(".space-message")).filter((article) => article.textContent?.includes(text));
+}
+
+function findMessageArticle(text) {
+  return messageArticles(text)[0];
+}
+
 resetDemoWorkspace();
 localStorage.setItem("openpivot.web.mode", "demo");
 localStorage.setItem("openpivot.web.theme", "light");
@@ -233,6 +241,18 @@ const messageText = `UI smoke message ${Date.now()}`;
 fireEvent.change(screen.getByPlaceholderText("给 OpenPivot 核心开发 发送消息..."), { target: { value: messageText } });
 fireEvent.click(screen.getByRole("button", { name: "发送" }));
 await screen.findByText(messageText);
+await waitFor(() => assert(findMessageArticle(messageText)?.getAttribute("data-delivery-state") === "sent", "First sent message should settle before the next send"));
+const failedText = `失败测试 ${Date.now()}`;
+fireEvent.change(screen.getByPlaceholderText("给 OpenPivot 核心开发 发送消息..."), { target: { value: failedText } });
+fireEvent.click(screen.getByRole("button", { name: "发送" }));
+await screen.findByText(failedText);
+await screen.findByText(/发送失败/);
+fireEvent.click(screen.getByRole("button", { name: "重试" }));
+await waitFor(() => {
+  const failedArticles = messageArticles(failedText);
+  assert(failedArticles.length === 1, "Retried failed message should remain a single timeline entry");
+  assert(failedArticles[0]?.getAttribute("data-delivery-state") === "sent", "Retried failed message should become sent");
+});
 
 clickHref("/spaces/core/participants");
 await screen.findByText("产品负责人");
@@ -256,6 +276,7 @@ console.log(JSON.stringify({
     "connected-spaces-empty-state-guides-to-participants",
     "demo-create-flow-requires-space",
     "demo-app-inbox-space-send-participants-flow-approval",
+    "demo-failed-message-retry",
     "connected-flows-hide-unsupported-create"
   ]
 }, null, 2));

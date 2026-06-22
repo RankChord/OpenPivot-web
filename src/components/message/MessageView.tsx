@@ -2,12 +2,14 @@ import { GitBranch } from "lucide-react";
 import type { MessageBlock, Participant, SpaceMessage } from "../../domain/models";
 import { blockText, deliveryLabel, shortTime } from "../../shared/format";
 import { ActorAvatar } from "../avatar/ActorAvatar";
-export function MessageView({ message, participants, canCreateFlow, onCreateFlow, createFlowPending }: {
+export function MessageView({ message, participants, canCreateFlow, onCreateFlow, createFlowPending, onRetryMessage, retryPending }: {
   message: SpaceMessage;
   participants: Participant[];
   canCreateFlow: boolean;
   onCreateFlow: (messageId: string) => void;
   createFlowPending: boolean;
+  onRetryMessage?: (messageId: string) => void;
+  retryPending?: boolean;
 }) {
   const sender = participants.find((participant) => participant.id === message.senderId);
   if (message.kind !== "message") {
@@ -19,7 +21,7 @@ export function MessageView({ message, participants, canCreateFlow, onCreateFlow
     );
   }
   return (
-    <article className="space-message">
+    <article className="space-message" data-delivery-state={message.deliveryState || "sent"} data-message-id={message.id}>
       <div className="message-author">
         <ActorAvatar id={sender?.id || "system"} size="sm" />
         <span>
@@ -31,7 +33,12 @@ export function MessageView({ message, participants, canCreateFlow, onCreateFlow
         {message.blocks.map((block, index) => <MessageBlockView block={block} key={`${message.id}-${index}`} />)}
       </div>
       <div className="message-actions">
-        <button className="text-button" disabled={!canCreateFlow || createFlowPending || message.deliveryState === "sending"} title={canCreateFlow ? undefined : "当前环境暂不支持协作流程"} onClick={() => onCreateFlow(message.id)}>
+        {message.deliveryState === "failed" && (
+          <button className="text-button" disabled={retryPending || !onRetryMessage} title={onRetryMessage ? undefined : "当前环境暂不支持重试"} onClick={() => onRetryMessage?.(message.id)}>
+            重试
+          </button>
+        )}
+        <button className="text-button" disabled={!canCreateFlow || createFlowPending || message.deliveryState === "sending" || message.deliveryState === "failed"} title={canCreateFlow ? undefined : "当前环境暂不支持协作流程"} onClick={() => onCreateFlow(message.id)}>
           基于此消息创建协作流程
         </button>
       </div>
