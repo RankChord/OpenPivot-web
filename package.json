@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:connected": "node scripts/smoke-connected-http.mjs",
     "test:smoke": "node scripts/smoke-domain.mjs",
+    "test:ui": "node scripts/smoke-ui.mjs",
     "test:watch": "vitest"
   },
   "dependencies": {

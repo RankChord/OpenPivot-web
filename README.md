@@ -174,6 +174,12 @@ Connected Mode 的 HTTP 协议链路可以用本地 mock 后端验证：
 npm run test:connected
 ```
 
+UI 层能力门控和流程创建表单可以用无浏览器 smoke 验证：
+
+```bash
+npm run test:ui
+```
+
 当前测试重点覆盖：
 
 - Rust HTTP Adapter 的请求封装、刷新令牌和重试逻辑
@@ -182,6 +188,7 @@ npm run test:connected
 - Connected Mode 的登录恢复、参与者搜索、联系请求、收件箱处理、一对一空间和消息收发协议链路
 - Demo 消息发送、联系请求和流程审批状态联动
 - 全局创建流程必须选择所属协作空间
+- Connected Mode 不支持的空间/流程入口不会渲染成可跳转假按钮
 - 邀请参与者加入已有协作空间会更新空间成员和时间线
 - Composer 的 Enter、Shift+Enter 和中文输入法组合输入行为
 
