@@ -201,7 +201,15 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
     return null;
   }
 
+  async createFlow(): Promise<CollaborationFlow> {
+    throw new Error("真实后端暂未接入协作流程。");
+  }
+
   async createFlowFromMessage(): Promise<CollaborationFlow> {
     throw new Error("真实后端暂未接入协作流程。");
+  }
+
+  async inviteParticipantToSpace(): Promise<CollaborationSpace> {
+    throw new Error("邀请参与者加入已有空间暂未接入当前后端协议。");
   }
 }

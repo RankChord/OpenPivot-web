@@ -143,7 +143,6 @@ export function SidebarSpaceGroup({ title, spaces }: { title: string; spaces: Co
 export function NewMenu({ app, onClose }: { app: AppContextValue; onClose: () => void }) {
   const groupReason = unavailableReason("groupSpaces", app.environment.capabilities);
   const flowReason = unavailableReason("collaborationFlows", app.environment.capabilities);
-  const createFlowReason = flowReason || "请先进入具体协作空间，或从空间消息创建协作流程。";
   return (
     <div className="new-menu">
       <Link to="/spaces/new" onClick={onClose} className={clsx(groupReason && "disabled-link")} aria-disabled={!!groupReason} title={groupReason || undefined}>
@@ -151,9 +150,9 @@ export function NewMenu({ app, onClose }: { app: AppContextValue; onClose: () =>
       </Link>
       <Link to="/participants" onClick={onClose}>与参与者开始对话</Link>
       <Link to="/participants" onClick={onClose}>建立联系</Link>
-      <button className="new-menu-action" disabled title={createFlowReason}>
+      {flowReason ? <button className="new-menu-action" disabled title={flowReason}>
         新建协作流程
-      </button>
+      </button> : <Link to="/flows/new" onClick={onClose}>新建协作流程</Link>}
     </div>
   );
 }

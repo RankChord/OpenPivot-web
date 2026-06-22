@@ -126,6 +126,34 @@ describe("workspace domain model", () => {
     expect(messages.at(-1)?.blocks[0]).toMatchObject({ type: "text", text: "人工审批已通过，流程已写回协作空间。" });
   });
 
+  it("creates a global flow only after selecting its owning space", async () => {
+    const adapter = new DemoWorkspaceAdapter();
+
+    const flow = await adapter.createFlow({ spaceId: "release", title: "发布确认流程" });
+    const releaseFlows = await adapter.listFlows("release");
+    const releaseMessages = await adapter.listMessages("release");
+
+    expect(flow).toMatchObject({
+      spaceId: "release",
+      title: "发布确认流程",
+      status: "draft"
+    });
+    expect(releaseFlows.some((item) => item.id === flow.id)).toBe(true);
+    expect(releaseMessages.at(-1)?.blocks[0]).toMatchObject({ type: "text", text: "新的协作流程草稿已绑定到此空间。" });
+  });
+
+  it("invites a connected participant into an existing collaboration space", async () => {
+    const adapter = new DemoWorkspaceAdapter();
+
+    const updated = await adapter.inviteParticipantToSpace("release", "forge");
+    const messages = await adapter.listMessages("release");
+
+    expect(updated.participantIds).toContain("forge");
+    expect(updated.kind).toBe("multi");
+    expect(updated.lastPreview).toBe("砺锋后端 已加入协作空间。");
+    expect(messages.at(-1)?.blocks[0]).toMatchObject({ type: "text", text: "砺锋后端 已加入协作空间。" });
+  });
+
   it("pauses the owning flow when an inbox approval is rejected", async () => {
     const adapter = new DemoWorkspaceAdapter();
     const approval = (await adapter.listInboxItems()).find((item) => item.kind === "approval");

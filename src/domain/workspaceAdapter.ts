@@ -30,5 +30,7 @@ export interface WorkspaceAdapter {
 
   listFlows(spaceId?: string): Promise<CollaborationFlow[]>;
   getFlow(spaceId: string, flowId: string): Promise<CollaborationFlow | null>;
+  createFlow(input: { spaceId: string; title?: string }): Promise<CollaborationFlow>;
   createFlowFromMessage(spaceId: string, messageId: string): Promise<CollaborationFlow>;
+  inviteParticipantToSpace(spaceId: string, participantId: string): Promise<CollaborationSpace>;
 }

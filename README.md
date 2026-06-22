@@ -33,6 +33,7 @@ OpenPivot Web 不再把聊天、好友、机器人和流程拆成后台式模块
 /participants
 /participants/:participantId
 /flows
+/flows/new
 /settings
 /login
 /register
@@ -167,6 +168,8 @@ npm run test
 - Session Bootstrap 的 Refresh Token 恢复和失败匿名状态
 - 工作区领域模型在 Demo 与 Connected 模式下的数据映射
 - Demo 消息发送、联系请求和流程审批状态联动
+- 全局创建流程必须选择所属协作空间
+- 邀请参与者加入已有协作空间会更新空间成员和时间线
 - Composer 的 Enter、Shift+Enter 和中文输入法组合输入行为
 
 ## 项目结构

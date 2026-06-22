@@ -117,6 +117,7 @@ export interface ProductCapabilities {
   collaborationFlows: boolean;
   flowRuns: boolean;
   approvals: boolean;
+  spaceInvites: boolean;
   connectionManagement: boolean;
 }
 

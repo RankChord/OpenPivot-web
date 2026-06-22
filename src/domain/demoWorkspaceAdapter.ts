@@ -521,6 +521,32 @@ export class DemoWorkspaceAdapter implements WorkspaceAdapter {
     return wait(store.flows.find((flow) => flow.spaceId === spaceId && flow.id === flowId) || null);
   }
 
+  async createFlow(input: { spaceId: string; title?: string }): Promise<CollaborationFlow> {
+    const space = store.spaces.find((item) => item.id === input.spaceId);
+    if (!space) throw new Error("没有找到协作空间");
+    const flow: CollaborationFlow = {
+      id: `draft-${Date.now()}`,
+      spaceId: input.spaceId,
+      title: input.title?.trim() || "新的协作流程",
+      status: "draft",
+      trigger: `当 ${space.title} 出现需要重复推进的协作`,
+      steps: [
+        { id: "trigger", kind: "trigger", title: "监听空间事件", detail: `来自 ${space.title}`, status: "idle" },
+        { id: "request", kind: "request_participant", title: "选择下一位参与者", detail: "填写请求内容和等待条件", status: "idle" },
+        { id: "post", kind: "post_to_space", title: "写回协作空间", detail: "流程完成后记录结果", status: "idle" }
+      ]
+    };
+    store.flows.push(flow);
+    space.hasActiveFlow = true;
+    space.lastActivityAt = new Date().toISOString();
+    space.lastPreview = "新的协作流程草稿已创建。";
+    store.messages[input.spaceId] = [
+      ...(store.messages[input.spaceId] || []),
+      flowEvent(`flow-created-${Date.now()}`, input.spaceId, "新的协作流程草稿已绑定到此空间。", flow.id)
+    ];
+    return wait(flow);
+  }
+
   async createFlowFromMessage(spaceId: string, messageId: string): Promise<CollaborationFlow> {
     const flow: CollaborationFlow = {
       id: `draft-${Date.now()}`,
@@ -541,5 +567,33 @@ export class DemoWorkspaceAdapter implements WorkspaceAdapter {
       flowEvent(`flow-created-${Date.now()}`, spaceId, "已基于此消息创建协作流程草稿。", flow.id)
     ];
     return wait(flow);
+  }
+
+  async inviteParticipantToSpace(spaceId: string, participantId: string): Promise<CollaborationSpace> {
+    const space = store.spaces.find((item) => item.id === spaceId);
+    const participant = store.participants.find((item) => item.id === participantId);
+    if (!space) throw new Error("没有找到协作空间");
+    if (!participant) throw new Error("没有找到参与者");
+    if (participant.relationship !== "connected" && participant.relationship !== "self") {
+      throw new Error("请先建立联系，再邀请参与者加入空间");
+    }
+    if (!space.participantIds.includes(participantId)) {
+      space.participantIds = [...space.participantIds, participantId];
+      space.kind = space.participantIds.length > 2 ? "multi" : "direct";
+      space.lastActivityAt = new Date().toISOString();
+      space.lastPreview = `${participant.displayName} 已加入协作空间。`;
+      store.messages[spaceId] = [
+        ...(store.messages[spaceId] || []),
+        {
+          id: `invite-${Date.now()}`,
+          spaceId,
+          kind: "system_event",
+          blocks: [{ type: "text", text: `${participant.displayName} 已加入协作空间。` }],
+          createdAt: space.lastActivityAt,
+          deliveryState: "sent"
+        }
+      ];
+    }
+    return wait(space);
   }
 }

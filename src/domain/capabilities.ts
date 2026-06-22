@@ -12,6 +12,7 @@ export const demoCapabilities: ProductCapabilities = {
   collaborationFlows: true,
   flowRuns: true,
   approvals: true,
+  spaceInvites: true,
   connectionManagement: true
 };
 
@@ -26,6 +27,7 @@ export const rustCapabilities: ProductCapabilities = {
   collaborationFlows: false,
   flowRuns: false,
   approvals: false,
+  spaceInvites: false,
   connectionManagement: false
 };
 
@@ -50,6 +52,7 @@ export function unavailableReason(feature: keyof ProductCapabilities, capabiliti
     collaborationFlows: "协作流程是演示能力，真实后端暂未接入。",
     flowRuns: "流程运行记录是演示能力，真实后端暂未接入。",
     approvals: "审批处理是演示能力，真实后端暂未接入。",
+    spaceInvites: "邀请参与者加入已有空间暂未接入当前后端协议。",
     connectionManagement: "连接管理不在当前后端协议范围内。"
   };
   return labels[feature];
