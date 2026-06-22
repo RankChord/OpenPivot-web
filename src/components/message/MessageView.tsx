@@ -14,7 +14,7 @@ export function MessageView({ message, participants, canCreateFlow, onCreateFlow
   const sender = participants.find((participant) => participant.id === message.senderId);
   if (message.kind !== "message") {
     return (
-      <div className="tool-line">
+      <div className="tool-line" data-message-id={message.id} id={message.id}>
         <span />
         <p>{message.blocks.map(blockText).join(" ")}</p>
       </div>

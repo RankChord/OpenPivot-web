@@ -774,6 +774,13 @@ input::placeholder {
   gap: 8px;
 }
 
+.message-anchor-focus {
+  scroll-margin-block: 96px;
+  outline: 1px solid color-mix(in srgb, var(--accent) 54%, transparent);
+  outline-offset: 8px;
+  border-radius: 8px;
+}
+
 .message-author {
   display: inline-grid;
   grid-template-columns: auto auto;

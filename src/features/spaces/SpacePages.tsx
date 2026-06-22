@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { Plus } from "lucide-react";
-import { useState } from "react";
-import { Link, NavLink, useNavigate, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, NavLink, useLocation, useNavigate, useParams } from "react-router-dom";
 import type { AppContextValue } from "../../app/AppContext";
 import { invalidateWorkspaceQueries } from "../../app/AppContext";
 import { unavailableReason } from "../../domain/capabilities";
@@ -114,6 +114,7 @@ export function CreateSpacePage({ app }: { app: AppContextValue }) {
 export function SpaceTimelinePage({ app }: { app: AppContextValue }) {
   const { spaceId = "" } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const spaceQuery = useQuery({
     queryKey: ["workspace", app.mode, app.session, "space", spaceId],
@@ -184,6 +185,18 @@ export function SpaceTimelinePage({ app }: { app: AppContextValue }) {
   const space = spaceQuery.data;
   const participants = participantsQuery.data || [];
   const messages = messagesQuery.data || [];
+  useEffect(() => {
+    if (!location.hash || messagesQuery.isLoading) return;
+    const messageId = decodeURIComponent(location.hash.slice(1));
+    if (!messageId) return;
+    const timeout = window.setTimeout(() => {
+      const target = document.getElementById(messageId);
+      target?.scrollIntoView({ block: "center" });
+      target?.classList.add("message-anchor-focus");
+      window.setTimeout(() => target?.classList.remove("message-anchor-focus"), 1800);
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [location.hash, messages.length, messagesQuery.isLoading, spaceId]);
   if (spaceQuery.isLoading) return <InlinePage title="正在打开协作空间" />;
   if (!space) return <InlinePage title="没有找到协作空间" detail="这个空间不存在，或当前环境没有权限访问。" action={<Link className="primary-button" to="/spaces">返回空间列表</Link>} />;
 

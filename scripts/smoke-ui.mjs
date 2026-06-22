@@ -85,6 +85,9 @@ globalThis.getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
 globalThis.localStorage = dom.window.localStorage;
 globalThis.requestAnimationFrame = (callback) => setTimeout(callback, 0);
 globalThis.cancelAnimationFrame = clearTimeout;
+dom.window.HTMLElement.prototype.scrollIntoView = function scrollIntoView() {
+  this.setAttribute("data-scrolled-into-view", "true");
+};
 
 const React = nodeRequire("react");
 const { QueryClient, QueryClientProvider } = nodeRequire("@tanstack/react-query");
@@ -298,9 +301,10 @@ assert(pendingProfile?.textContent?.includes("请先处理联系请求"), "Pendi
 assert(!Array.from(pendingProfile?.querySelectorAll("button") || []).some((button) => button.textContent?.trim() === "建立联系"), "Pending inbound participant profile must not offer a duplicate contact request");
 clickHref("/inbox");
 await screen.findByText("陈默等待你确认协议变更");
-clickHref("/spaces/core");
+clickHref("/spaces/core#core-4");
 await screen.findByPlaceholderText("给 OpenPivot 核心开发 发送消息...");
 assert(document.getElementById("core-4")?.getAttribute("data-message-id") === "core-4", "Message context links must have matching DOM anchors");
+await waitFor(() => assert(document.getElementById("core-4")?.getAttribute("data-scrolled-into-view") === "true", "Message context links must scroll to the target after async load"));
 const messageText = `UI smoke message ${Date.now()}`;
 fireEvent.change(screen.getByPlaceholderText("给 OpenPivot 核心开发 发送消息..."), { target: { value: messageText } });
 fireEvent.click(screen.getByRole("button", { name: "发送" }));
@@ -345,6 +349,7 @@ console.log(JSON.stringify({
     "participant-self-profile-disables-direct-space",
     "legacy-unknown-chat-returns-to-inbox",
     "inbox-message-context-links-have-anchors",
+    "inbox-message-context-scrolls-after-load",
     "inbox-contact-request-links-to-participant",
     "demo-app-inbox-space-send-participants-flow-approval",
     "demo-failed-message-retry",
