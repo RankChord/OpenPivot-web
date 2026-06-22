@@ -98,7 +98,7 @@ const { CommandPanel, NewMenu } = loadTsModule("src/app/AppShell.tsx");
 const { default: AppRouter } = loadTsModule("src/app/AppRouter.tsx");
 const { FlowDetailPage, FlowsOverviewPage } = loadTsModule("src/features/flows/FlowPages.tsx");
 const { SettingsPage } = loadTsModule("src/features/settings/SettingsPage.tsx");
-const { CreateSpacePage, SpacesPage, SpaceFlowsPage } = loadTsModule("src/features/spaces/SpacePages.tsx");
+const { CreateSpacePage, SpacesPage, SpaceFlowsPage, SpaceTimelinePage } = loadTsModule("src/features/spaces/SpacePages.tsx");
 const { demoCapabilities, rustCapabilities } = loadTsModule("src/domain/capabilities.ts");
 const { DemoWorkspaceAdapter, resetDemoWorkspace } = loadTsModule("src/domain/demoWorkspaceAdapter.ts");
 
@@ -421,6 +421,29 @@ await waitFor(() => assert(!!document.querySelector('a[href="/inbox"][aria-curre
 assert(!document.querySelector(".message-column"), "Unknown legacy chat routes must not fall through to a space timeline");
 view.dispose();
 
+let missingTimelineMessagesCalled = false;
+view = renderWithProviders(
+  React.createElement(Routes, null,
+    React.createElement(Route, {
+      path: "/spaces/:spaceId",
+      element: React.createElement(SpaceTimelinePage, {
+        app: createApp({ capabilities: demoCapabilities, mode: "demo", workspace: {
+          getSpace: async () => null,
+          listParticipants: async () => [],
+          listMessages: async () => {
+            missingTimelineMessagesCalled = true;
+            return [];
+          }
+        } })
+      })
+    })
+  ),
+  { initialEntries: ["/spaces/missing"] }
+);
+await screen.findByText("没有找到协作空间");
+assert(!missingTimelineMessagesCalled, "Missing space timeline routes must not load messages before a real space exists");
+view.dispose();
+
 resetDemoWorkspace();
 localStorage.setItem("openpivot.web.mode", "demo");
 localStorage.setItem("openpivot.web.theme", "light");
@@ -454,7 +477,7 @@ clickHref("/inbox");
 await screen.findByText("陈默等待你确认协议变更");
 clickHref("/spaces/core#core-4");
 await screen.findByPlaceholderText("给 OpenPivot 核心开发 发送消息...");
-assert(document.getElementById("core-4")?.getAttribute("data-message-id") === "core-4", "Message context links must have matching DOM anchors");
+await waitFor(() => assert(document.getElementById("core-4")?.getAttribute("data-message-id") === "core-4", "Message context links must have matching DOM anchors"));
 await waitFor(() => assert(document.getElementById("core-4")?.getAttribute("data-scrolled-into-view") === "true", "Message context links must scroll to the target after async load"));
 const messageText = `UI smoke message ${Date.now()}`;
 fireEvent.change(screen.getByPlaceholderText("给 OpenPivot 核心开发 发送消息..."), { target: { value: messageText } });
@@ -503,6 +526,7 @@ console.log(JSON.stringify({
     "flow-detail-approval-requires-matching-inbox-item",
     "participant-self-profile-disables-direct-space",
     "legacy-unknown-chat-returns-to-inbox",
+    "missing-space-timeline-does-not-load-messages",
     "missing-space-subroutes-stop-false-context",
     "inbox-message-context-links-have-anchors",
     "inbox-message-context-scrolls-after-load",

@@ -124,15 +124,16 @@ export function SpaceTimelinePage({ app }: { app: AppContextValue }) {
     queryFn: () => app.workspace!.getSpace(spaceId),
     enabled: !!app.workspace && !!spaceId
   });
+  const space = spaceQuery.data;
   const participantsQuery = useQuery({
     queryKey: ["workspace", app.mode, app.session, "participants"],
     queryFn: () => app.workspace!.listParticipants(),
-    enabled: !!app.workspace
+    enabled: !!app.workspace && !!space
   });
   const messagesQuery = useQuery({
     queryKey: ["workspace", app.mode, app.session, "messages", spaceId],
-    queryFn: () => app.workspace!.listMessages(spaceId),
-    enabled: !!app.workspace && !!spaceId,
+    queryFn: () => app.workspace!.listMessages(space!.id),
+    enabled: !!app.workspace && !!space,
     refetchInterval: app.mode === "connected" ? 5000 : false
   });
   const sendMutation = useMutation({
@@ -185,7 +186,6 @@ export function SpaceTimelinePage({ app }: { app: AppContextValue }) {
     }
   });
 
-  const space = spaceQuery.data;
   const participants = participantsQuery.data || [];
   const messages = messagesQuery.data || [];
   useEffect(() => {
