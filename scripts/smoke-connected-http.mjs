@@ -84,7 +84,8 @@ const state = {
   refreshToken: "refresh-initial",
   users: [
     { id: 1, username: "ling", nickname: "Ling" },
-    { id: 2, username: "bob", nickname: "Bob" }
+    { id: 2, username: "bob", nickname: "Bob" },
+    { id: 3, username: "carol", nickname: "Carol" }
   ]
 };
 
@@ -123,7 +124,7 @@ const server = http.createServer(async (req, res) => {
     if (pathName === "/v1/auth/me" && method === "GET") return json(res, 200, { user_id: 1 });
     if (pathName === "/v1/users/search" && method === "GET") {
       const q = (url.searchParams.get("q") || "").toLowerCase();
-      return json(res, 200, state.users.filter((user) => user.id !== 1 && `${user.username} ${user.nickname}`.toLowerCase().includes(q)));
+      return json(res, 200, state.users.filter((user) => user.id !== 1 && `${user.id} ${user.username} ${user.nickname}`.toLowerCase().includes(q)));
     }
     if (pathName === "/v1/friends" && method === "GET") return json(res, 200, state.friends);
     if (pathName === "/v1/friends/requests" && method === "GET") {
@@ -188,6 +189,12 @@ try {
   const workspace = new ConnectedWorkspaceAdapter(restoredAdapter, restored.session.sourceUserId);
   const search = await workspace.searchParticipants("bob");
   assert(search[0].id === "user-2", "participant search should map users into participants");
+  const stranger = (await workspace.searchParticipants("carol"))[0];
+  assert(stranger?.relationship === "none", "search should expose non-contact participants without implying a relationship");
+  assert((await workspace.getParticipant("user-3"))?.displayName === "Carol", "searched non-contact participant should be route-addressable");
+  const outboundCarol = await workspace.createContactRequest("user-3", "hello");
+  assert(outboundCarol.participant.relationship === "pending_outbound", "outbound request should cache pending participant state");
+  assert((await workspace.getParticipant("user-3"))?.relationship === "pending_outbound", "pending outbound participant should remain route-addressable");
 
   const outbound = await workspace.createContactRequest("user-2", "希望建立联系。");
   assert(outbound.participant.id === "user-2", "outbound contact request should point at the target participant");
@@ -197,6 +204,13 @@ try {
   assert(inbox[0].requestId === "10", "incoming contact request should appear in inbox");
   const inboxParticipant = await workspace.getParticipant(inbox[0].participantId);
   assert(inboxParticipant?.relationship === "pending_inbound", "incoming contact request participant should be addressable from inbox context");
+  let preAcceptDirectRejected = false;
+  try {
+    await workspace.createDirectSpace("user-2");
+  } catch {
+    preAcceptDirectRejected = true;
+  }
+  assert(preAcceptDirectRejected, "direct spaces should require an accepted relationship");
   await workspace.acceptContactRequest(inbox[0].requestId);
 
   const space = await workspace.createDirectSpace("user-2");

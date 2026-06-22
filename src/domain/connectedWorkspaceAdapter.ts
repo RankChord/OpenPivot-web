@@ -74,6 +74,8 @@ function messageToDomain(message: Message): SpaceMessage {
 }
 
 export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
+  private readonly participantCache = new Map<string, Participant>();
+
   constructor(private readonly rust: RustHttpAdapter, private readonly currentUserId: number) {}
 
   private async friendList(): Promise<UserSummary[]> {
@@ -90,8 +92,14 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
     return participants.filter((participant) => {
       if (seen.has(participant.id)) return false;
       seen.add(participant.id);
+      this.participantCache.set(participant.id, participant);
       return true;
     });
+  }
+
+  private cacheParticipants(participants: Participant[]): Participant[] {
+    participants.forEach((participant) => this.participantCache.set(participant.id, participant));
+    return participants;
   }
 
   private async sourceConversationId(spaceId: string): Promise<number> {
@@ -150,7 +158,18 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
 
   async getParticipant(participantId: string): Promise<Participant | null> {
     const participants = await this.listParticipants();
-    return participants.find((participant) => participant.id === participantId) || null;
+    const listed = participants.find((participant) => participant.id === participantId);
+    if (listed) return listed;
+    const cached = this.participantCache.get(participantId);
+    if (cached) return cached;
+    const sourceId = Number(participantId.replace("user-", ""));
+    if (!Number.isFinite(sourceId) || sourceId <= 0) return null;
+    const users = await this.rust.searchUsers(String(sourceId)).catch(() => []);
+    const user = users.find((candidate) => candidate.id === sourceId);
+    if (!user) return null;
+    const participant = userParticipant(user, "none");
+    this.participantCache.set(participant.id, participant);
+    return participant;
   }
 
   async searchParticipants(query: string): Promise<Participant[]> {
@@ -163,13 +182,15 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
     ]);
     const friendIds = new Set(friends.map((friend) => friend.id));
     const requestRelationships = new Map(requests.map((request) => [request.participant.sourceId, request.participant.relationship]));
-    return users.map((user) => userParticipant(user, friendIds.has(user.id) ? "connected" : requestRelationships.get(user.id) || "none"));
+    return this.cacheParticipants(users.map((user) => userParticipant(user, friendIds.has(user.id) ? "connected" : requestRelationships.get(user.id) || "none")));
   }
 
   async createDirectSpace(participantId: string): Promise<CollaborationSpace> {
     const sourceId = Number(participantId.replace("user-", ""));
     if (!Number.isFinite(sourceId) || sourceId <= 0) throw new Error("参与者缺少真实后端 ID");
     if (sourceId === this.currentUserId) throw new Error("不能和当前身份创建一对一协作空间");
+    const participant = await this.getParticipant(participantId);
+    if (participant?.relationship !== "connected") throw new Error("请先建立联系，再开始一对一协作空间");
     const conversation = await this.rust.createDirectConversation(sourceId);
     const friends = await this.friendList();
     return conversationToSpace(conversation, this.currentUserId, friends);
@@ -183,7 +204,7 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
     const sourceId = Number(participantId.replace("user-", ""));
     if (!Number.isFinite(sourceId) || sourceId <= 0) throw new Error("参与者缺少真实后端 ID");
     const request = await this.rust.createFriendRequest({ userId: sourceId, message });
-    return {
+    const contactRequest: ContactRequest = {
       id: String(request.id),
       sourceId: request.id,
       participant: {
@@ -198,6 +219,8 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
       message: request.message,
       status: request.status as ContactRequest["status"]
     };
+    this.participantCache.set(contactRequest.participant.id, contactRequest.participant);
+    return contactRequest;
   }
 
   async acceptContactRequest(requestId: string): Promise<ContactRequest> {

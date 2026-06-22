@@ -98,7 +98,7 @@ const { CommandPanel, NewMenu } = loadTsModule("src/app/AppShell.tsx");
 const { default: AppRouter } = loadTsModule("src/app/AppRouter.tsx");
 const { FlowsOverviewPage } = loadTsModule("src/features/flows/FlowPages.tsx");
 const { SettingsPage } = loadTsModule("src/features/settings/SettingsPage.tsx");
-const { SpacesPage, SpaceFlowsPage } = loadTsModule("src/features/spaces/SpacePages.tsx");
+const { CreateSpacePage, SpacesPage, SpaceFlowsPage } = loadTsModule("src/features/spaces/SpacePages.tsx");
 const { demoCapabilities, rustCapabilities } = loadTsModule("src/domain/capabilities.ts");
 const { DemoWorkspaceAdapter, resetDemoWorkspace } = loadTsModule("src/domain/demoWorkspaceAdapter.ts");
 
@@ -224,6 +224,30 @@ view.dispose();
 resetDemoWorkspace();
 const demoWorkspace = new DemoWorkspaceAdapter();
 assert((await demoWorkspace.listSpaces()).length > 0, "Demo workspace must provide spaces for UI smoke setup");
+
+function pickerInputFor(text) {
+  const row = Array.from(document.querySelectorAll(".picker-row")).find((item) => item.textContent?.includes(text));
+  assert(row, `Expected picker row for ${text}`);
+  return row.querySelector("input");
+}
+
+view = renderWithProviders(
+  React.createElement(CreateSpacePage, {
+    app: createApp({ capabilities: demoCapabilities, mode: "demo", workspace: demoWorkspace })
+  })
+);
+await screen.findByText("Mira");
+const pendingInput = pickerInputFor("Mira");
+assert(pendingInput?.disabled, "Create space page must disable pending inbound participants");
+const connectedInput = pickerInputFor("林舟");
+assert(connectedInput && !connectedInput.disabled, "Create space page must allow connected participants");
+const createSpaceButton = screen.getByRole("button", { name: "创建并进入空间" });
+assert(createSpaceButton.disabled, "Create space button must wait for a name and connected participant");
+fireEvent.change(screen.getByPlaceholderText("例如：发布协作室"), { target: { value: "UI smoke space" } });
+fireEvent.click(connectedInput);
+await waitFor(() => assert(!createSpaceButton.disabled, "Create space button must enable for a valid connected participant selection"));
+view.dispose();
+
 const spaceFlowWorkspace = {
   createFlow: async (input) => ({
     id: "ui-flow",
@@ -377,6 +401,7 @@ console.log(JSON.stringify({
     "settings-api-save-is-stateful",
     "demo-settings-hides-fake-logout",
     "connected-spaces-empty-state-guides-to-participants",
+    "create-space-requires-connected-participants",
     "space-flow-create-binds-current-space",
     "participant-self-profile-disables-direct-space",
     "legacy-unknown-chat-returns-to-inbox",

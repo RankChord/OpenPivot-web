@@ -61,6 +61,20 @@ try {
   selfDirectRejected = true;
 }
 assert(selfDirectRejected, "Demo workspace must reject direct spaces with the current identity");
+let pendingDirectRejected = false;
+try {
+  await demo.createDirectSpace("mira");
+} catch {
+  pendingDirectRejected = true;
+}
+assert(pendingDirectRejected, "Demo workspace must reject direct spaces before a relationship is connected");
+let pendingSpaceRejected = false;
+try {
+  await demo.createSpace({ title: "pending-space", participantIds: ["mira"] });
+} catch {
+  pendingSpaceRejected = true;
+}
+assert(pendingSpaceRejected, "Demo workspace must reject group spaces with non-connected participants");
 
 const updated = await demo.inviteParticipantToSpace("release", "forge");
 assert(updated.participantIds.includes("forge"), "Inviting a participant must update the space membership");
@@ -72,19 +86,35 @@ assert(inviteEvent?.blocks?.[0]?.type === "text", "Invite timeline event must re
 const rust = {
   acceptFriendRequest: async () => ({ id: 3, requester_id: 2, addressee_id: 1, status: "accepted", message: "hello" }),
   createDirectConversation: async () => ({ id: 9, conversation_type: "direct", user_low_id: 1, user_high_id: 2 }),
-  createFriendRequest: async () => ({ id: 3, requester_id: 1, addressee_id: 2, status: "pending", message: "hello" }),
+  createFriendRequest: async ({ userId, message }) => ({ id: 3, requester_id: 1, addressee_id: userId, status: "pending", message: message ?? null }),
   listConversations: async () => [{ id: 9, conversation_type: "direct", user_low_id: 1, user_high_id: 2 }],
   listFriendRequests: async () => [{ id: 4, requester_id: 4, addressee_id: 1, status: "pending", message: "please connect" }],
   listFriends: async () => [{ id: 2, username: "bob", nickname: "Bob" }],
   listMessages: async (conversationId) => [{ id: 1, conversation_id: conversationId, sender_id: 2, content: "hi", created_at: "2026-06-23T00:00:00Z" }],
   rejectFriendRequest: async () => ({ id: 3, requester_id: 2, addressee_id: 1, status: "rejected", message: "hello" }),
-  searchUsers: async () => [{ id: 2, username: "bob", nickname: "Bob" }],
+  searchUsers: async (query) => query === "carol" || query === "3"
+    ? [{ id: 3, username: "carol", nickname: "Carol" }]
+    : [{ id: 2, username: "bob", nickname: "Bob" }],
   sendMessage: async (conversationId, content) => ({ id: 2, conversation_id: conversationId, sender_id: 1, content, created_at: "2026-06-23T00:01:00Z" })
 };
 
 const connected = new ConnectedWorkspaceAdapter(rust, 1);
 const pendingParticipant = await connected.getParticipant("user-4");
 assert(pendingParticipant?.relationship === "pending_inbound", "Connected incoming contact request participant must be addressable before becoming a contact");
+const carol = (await connected.searchParticipants("carol"))[0];
+assert(carol?.id === "user-3" && carol.relationship === "none", "Connected search must expose non-contact participants as participants");
+const loadedCarol = await connected.getParticipant("user-3");
+assert(loadedCarol?.displayName === "Carol", "Connected searched participant must remain addressable by route");
+let directCarolRejected = false;
+try {
+  await connected.createDirectSpace("user-3");
+} catch {
+  directCarolRejected = true;
+}
+assert(directCarolRejected, "Connected direct spaces require an established relationship");
+const outboundCarol = await connected.createContactRequest("user-3", "hello");
+assert(outboundCarol.participant.relationship === "pending_outbound", "Connected contact request should cache pending outbound relationship");
+assert((await connected.getParticipant("user-3"))?.relationship === "pending_outbound", "Connected pending outbound participant must remain addressable");
 const spaces = await connected.listSpaces();
 assert(spaces[0].id === "conversation-9", "Connected direct conversation must map to a stable space URL");
 assert(spaces[0].kind === "direct", "Connected direct conversation must map to a direct collaboration space");

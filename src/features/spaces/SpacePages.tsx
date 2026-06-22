@@ -13,7 +13,7 @@ import { EmptyState, InlinePage, InlineState, PageTitle } from "../../components
 import { MessageView } from "../../components/message/MessageView";
 import { FlowList } from "../flows/FlowPages";
 import { ParticipantLink } from "../participants/ParticipantPages";
-import { directSubtitle, shortDate } from "../../shared/format";
+import { directSubtitle, relationshipLabel, shortDate } from "../../shared/format";
 export function SpacesPage({ app }: { app: AppContextValue }) {
   const spacesQuery = useQuery({
     queryKey: ["workspace", app.mode, app.session, "spaces"],
@@ -75,10 +75,12 @@ export function CreateSpacePage({ app }: { app: AppContextValue }) {
     }
   });
   const reason = unavailableReason("groupSpaces", app.environment.capabilities);
+  const canSubmit = !reason && !!title.trim() && selected.length > 0 && !create.isPending;
+  const submitReason = reason || (!title.trim() ? "请填写协作空间名称" : !selected.length ? "请至少选择一位已建立联系的参与者" : undefined);
   return (
     <section className="center-page page-fade">
       <div className="main-column narrow">
-        <PageTitle title="新建协作空间" subtitle="选择任意参与者，人类与智能体使用同一个选择器。" />
+        <PageTitle title="新建协作空间" subtitle="选择已建立联系的参与者，人类与智能体使用同一个选择器。" />
         {reason && <InlineState title="当前环境不可创建多人空间" detail={reason} />}
         <form className="create-space-form" onSubmit={(event) => {
           event.preventDefault();
@@ -92,19 +94,20 @@ export function CreateSpacePage({ app }: { app: AppContextValue }) {
             <h2>参与者</h2>
             {(participantsQuery.data || []).filter((participant) => participant.relationship !== "self").map((participant) => {
               const checked = selected.includes(participant.id);
+              const unavailable = !!reason || participant.relationship !== "connected";
               return (
                 <label key={participant.id} className={clsx("picker-row", checked && "selected")}>
-                  <input type="checkbox" checked={checked} disabled={!!reason} onChange={(event) => {
+                  <input type="checkbox" checked={checked} disabled={unavailable} title={participant.relationship === "connected" ? undefined : relationshipLabel(participant.relationship)} onChange={(event) => {
                     setSelected((current) => event.target.checked ? [...current, participant.id] : current.filter((id) => id !== participant.id));
                   }} />
                   <ActorAvatar id={participant.id} size="sm" />
-                  <span><strong>{participant.displayName}</strong><small>{participant.title || participant.handle}</small></span>
+                  <span><strong>{participant.displayName}</strong><small>{participant.relationship === "connected" ? participant.title || participant.handle : relationshipLabel(participant.relationship)}</small></span>
                 </label>
               );
             })}
           </section>
           {create.error && <p className="form-error">{(create.error as Error).message}</p>}
-          <button className="primary-button" disabled={!!reason || create.isPending}>创建并进入空间</button>
+          <button className="primary-button" disabled={!canSubmit} title={canSubmit ? undefined : submitReason}>创建并进入空间</button>
         </form>
       </div>
     </section>

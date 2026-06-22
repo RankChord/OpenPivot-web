@@ -397,6 +397,7 @@ export class DemoWorkspaceAdapter implements WorkspaceAdapter {
     if (existing) return wait(existing);
     const participant = store.participants.find((item) => item.id === participantId);
     if (!participant) throw new Error("没有找到参与者");
+    if (participant.relationship !== "connected") throw new Error("请先建立联系，再开始一对一协作空间");
     const space: CollaborationSpace = {
       id: `direct-${participantId}`,
       kind: "direct",
@@ -425,6 +426,11 @@ export class DemoWorkspaceAdapter implements WorkspaceAdapter {
     });
     if (!input.title.trim()) throw new Error("请填写协作空间名称");
     if (selected.length < 2) throw new Error("请至少选择一位参与者");
+    const unavailable = selected
+      .filter((id) => id !== "me")
+      .map((id) => store.participants.find((participant) => participant.id === id))
+      .filter((participant) => participant?.relationship !== "connected");
+    if (unavailable.length) throw new Error("只能邀请已建立联系的参与者加入协作空间");
     const id = `space-${Date.now()}`;
     const space: CollaborationSpace = {
       id,
