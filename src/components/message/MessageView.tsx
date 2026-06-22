@@ -21,7 +21,7 @@ export function MessageView({ message, participants, canCreateFlow, onCreateFlow
     );
   }
   return (
-    <article className="space-message" data-delivery-state={message.deliveryState || "sent"} data-message-id={message.id}>
+    <article className="space-message" data-delivery-state={message.deliveryState || "sent"} data-message-id={message.id} id={message.id}>
       <div className="message-author">
         <ActorAvatar id={sender?.id || "system"} size="sm" />
         <span>

@@ -255,11 +255,21 @@ function findMessageArticle(text) {
 resetDemoWorkspace();
 localStorage.setItem("openpivot.web.mode", "demo");
 localStorage.setItem("openpivot.web.theme", "light");
+view = renderWithProviders(React.createElement(AppRouter), { initialEntries: ["/messages?chat=missing"] });
+await waitFor(() => assert(!!document.querySelector('a[href="/inbox"][aria-current="page"]'), "Unknown legacy chat routes must return to inbox"));
+assert(!document.querySelector(".message-column"), "Unknown legacy chat routes must not fall through to a space timeline");
+view.dispose();
+
+resetDemoWorkspace();
+localStorage.setItem("openpivot.web.mode", "demo");
+localStorage.setItem("openpivot.web.theme", "light");
 view = renderWithProviders(React.createElement(AppRouter), { initialEntries: ["/inbox"] });
 
 await screen.findByText("陈默等待你确认协议变更");
+assert(document.querySelector('a[href="/spaces/core#core-4"]'), "Inbox mention must link to the exact message context");
 clickHref("/spaces/core");
 await screen.findByPlaceholderText("给 OpenPivot 核心开发 发送消息...");
+assert(document.getElementById("core-4")?.getAttribute("data-message-id") === "core-4", "Message context links must have matching DOM anchors");
 const messageText = `UI smoke message ${Date.now()}`;
 fireEvent.change(screen.getByPlaceholderText("给 OpenPivot 核心开发 发送消息..."), { target: { value: messageText } });
 fireEvent.click(screen.getByRole("button", { name: "发送" }));
@@ -301,6 +311,8 @@ console.log(JSON.stringify({
     "connected-spaces-empty-state-guides-to-participants",
     "demo-create-flow-requires-space",
     "participant-self-profile-disables-direct-space",
+    "legacy-unknown-chat-returns-to-inbox",
+    "inbox-message-context-links-have-anchors",
     "demo-app-inbox-space-send-participants-flow-approval",
     "demo-failed-message-retry",
     "connected-flows-hide-unsupported-create"

@@ -174,7 +174,9 @@ export function LegacyMessagesRedirect() {
   const [params] = useSearchParams();
   const chat = params.get("chat");
   if (!chat) return <Navigate to="/inbox" replace />;
-  const spaceId = chat === "core" || chat === "release" || chat === "protocol" || chat === "orion" || chat === "lin" ? chat : "core";
+  const legacySpaceIds = new Set(["core", "release", "protocol", "orion", "lin"]);
+  const spaceId = legacySpaceIds.has(chat) ? chat : "";
+  if (!spaceId) return <Navigate to="/inbox" replace />;
   return <Navigate to={`/spaces/${spaceId}`} replace />;
 }
 
