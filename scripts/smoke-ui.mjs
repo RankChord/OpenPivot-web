@@ -483,6 +483,105 @@ await screen.findByText("没有找到协作空间");
 assert(!missingTimelineMessagesCalled, "Missing space timeline routes must not load messages before a real space exists");
 view.dispose();
 
+const resolvedSpaceCalls = [];
+view = renderWithProviders(
+  React.createElement(Routes, null,
+    React.createElement(Route, {
+      path: "/spaces/:spaceId",
+      element: React.createElement(SpaceTimelinePage, {
+        app: createApp({ capabilities: demoCapabilities, mode: "demo", workspace: {
+          getSpace: async (routeSpaceId) => {
+            assert(routeSpaceId === "route-alias", "Timeline should receive the route space id before resolving context");
+            return {
+              id: "canonical",
+              kind: "multi",
+              participantIds: ["me", "lin"],
+              title: "解析空间"
+            };
+          },
+          listParticipants: async () => [
+            { id: "me", kind: "human", displayName: "Ling", relationship: "self" },
+            { id: "lin", kind: "human", displayName: "林舟", relationship: "connected" }
+          ],
+          listMessages: async (spaceId) => {
+            resolvedSpaceCalls.push(`list:${spaceId}`);
+            return [
+              {
+                id: "canonical-message",
+                spaceId,
+                senderId: "lin",
+                kind: "message",
+                blocks: [{ type: "text", text: "canonical message" }],
+                createdAt: "2026-06-23T00:00:00Z",
+                deliveryState: "sent"
+              },
+              {
+                id: "failed-canonical",
+                spaceId,
+                senderId: "me",
+                kind: "message",
+                blocks: [{ type: "text", text: "retry canonical message" }],
+                createdAt: "2026-06-23T00:01:00Z",
+                deliveryState: "failed"
+              }
+            ];
+          },
+          sendMessage: async (spaceId, content, clientId) => {
+            resolvedSpaceCalls.push(`send:${spaceId}`);
+            return {
+              id: clientId || "sent-canonical",
+              spaceId,
+              senderId: "me",
+              kind: "message",
+              blocks: [{ type: "text", text: content }],
+              createdAt: "2026-06-23T00:02:00Z",
+              deliveryState: "sent"
+            };
+          },
+          retryMessage: async (spaceId, messageId) => {
+            resolvedSpaceCalls.push(`retry:${spaceId}`);
+            return {
+              id: messageId,
+              spaceId,
+              senderId: "me",
+              kind: "message",
+              blocks: [{ type: "text", text: "retry canonical message" }],
+              createdAt: "2026-06-23T00:03:00Z",
+              deliveryState: "sent"
+            };
+          },
+          createFlowFromMessage: async (spaceId) => {
+            resolvedSpaceCalls.push(`flow:${spaceId}`);
+            return {
+              id: "flow-canonical",
+              spaceId,
+              status: "draft",
+              title: "Canonical flow",
+              trigger: "canonical trigger",
+              steps: []
+            };
+          }
+        } })
+      })
+    }),
+    React.createElement(Route, { path: "/spaces/canonical/flows/:flowId", element: React.createElement("p", null, "canonical-flow-route") }),
+    React.createElement(Route, { path: "/spaces/:spaceId/flows/:flowId", element: React.createElement("p", null, "wrong-flow-route") })
+  ),
+  { initialEntries: ["/spaces/route-alias"] }
+);
+await screen.findByPlaceholderText("给 解析空间 发送消息...");
+await waitFor(() => assert(resolvedSpaceCalls.includes("list:canonical"), "Timeline message loading must use the resolved space id"));
+fireEvent.change(screen.getByPlaceholderText("给 解析空间 发送消息..."), { target: { value: "resolved send" } });
+fireEvent.click(screen.getByRole("button", { name: "发送" }));
+await waitFor(() => assert(resolvedSpaceCalls.includes("send:canonical"), "Timeline sending must use the resolved space id"));
+fireEvent.click(screen.getByRole("button", { name: "重试" }));
+await waitFor(() => assert(resolvedSpaceCalls.includes("retry:canonical"), "Timeline retry must use the resolved space id"));
+clickLastButtonByText("基于此消息创建协作流程");
+await screen.findByText("canonical-flow-route");
+assert(!document.body.textContent?.includes("wrong-flow-route"), "Flow creation from a resolved timeline must navigate through the canonical space id");
+assert(resolvedSpaceCalls.includes("flow:canonical"), "Timeline flow creation must use the resolved space id");
+view.dispose();
+
 resetDemoWorkspace();
 localStorage.setItem("openpivot.web.mode", "demo");
 localStorage.setItem("openpivot.web.theme", "light");
@@ -567,6 +666,7 @@ console.log(JSON.stringify({
     "participant-self-profile-disables-direct-space",
     "legacy-unknown-chat-returns-to-inbox",
     "missing-space-timeline-does-not-load-messages",
+    "timeline-actions-use-resolved-space-context",
     "missing-space-subroutes-stop-false-context",
     "inbox-message-context-links-have-anchors",
     "inbox-message-context-scrolls-after-load",

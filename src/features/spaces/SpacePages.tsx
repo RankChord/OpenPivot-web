@@ -125,64 +125,65 @@ export function SpaceTimelinePage({ app }: { app: AppContextValue }) {
     enabled: !!app.workspace && !!spaceId
   });
   const space = spaceQuery.data;
+  const resolvedSpaceId = space?.id || spaceId;
   const participantsQuery = useQuery({
     queryKey: ["workspace", app.mode, app.session, "participants"],
     queryFn: () => app.workspace!.listParticipants(),
     enabled: !!app.workspace && !!space
   });
   const messagesQuery = useQuery({
-    queryKey: ["workspace", app.mode, app.session, "messages", spaceId],
+    queryKey: ["workspace", app.mode, app.session, "messages", resolvedSpaceId],
     queryFn: () => app.workspace!.listMessages(space!.id),
     enabled: !!app.workspace && !!space,
     refetchInterval: app.mode === "connected" ? 5000 : false
   });
   const sendMutation = useMutation({
-    mutationFn: ({ text, clientId }: { text: string; clientId: string }) => app.workspace!.sendMessage(spaceId, text, clientId),
+    mutationFn: ({ text, clientId }: { text: string; clientId: string }) => app.workspace!.sendMessage(space!.id, text, clientId),
     onMutate: async ({ text, clientId }) => {
-      await queryClient.cancelQueries({ queryKey: ["workspace", app.mode, app.session, "messages", spaceId] });
+      await queryClient.cancelQueries({ queryKey: ["workspace", app.mode, app.session, "messages", resolvedSpaceId] });
       const optimistic: SpaceMessage = {
         id: clientId,
-        spaceId,
+        spaceId: resolvedSpaceId,
         senderId: app.environment.currentUserId,
         kind: "message",
         blocks: [{ type: "text", text }],
         createdAt: new Date().toISOString(),
         deliveryState: "sending"
       };
-      queryClient.setQueryData<SpaceMessage[]>(["workspace", app.mode, app.session, "messages", spaceId], (current = []) => [...current, optimistic]);
+      queryClient.setQueryData<SpaceMessage[]>(["workspace", app.mode, app.session, "messages", resolvedSpaceId], (current = []) => [...current, optimistic]);
       return { clientId };
     },
     onSuccess: (message, _variables, context) => {
-      queryClient.setQueryData<SpaceMessage[]>(["workspace", app.mode, app.session, "messages", spaceId], (current = []) => current.map((item) => item.id === context?.clientId ? message : item));
+      queryClient.setQueryData<SpaceMessage[]>(["workspace", app.mode, app.session, "messages", resolvedSpaceId], (current = []) => current.map((item) => item.id === context?.clientId ? message : item));
       void queryClient.invalidateQueries({ queryKey: ["workspace", app.mode, app.session, "spaces"] });
     },
     onError: (_error, _variables, context) => {
-      queryClient.setQueryData<SpaceMessage[]>(["workspace", app.mode, app.session, "messages", spaceId], (current = []) => current.map((item) => item.id === context?.clientId ? { ...item, deliveryState: "failed" } : item));
+      queryClient.setQueryData<SpaceMessage[]>(["workspace", app.mode, app.session, "messages", resolvedSpaceId], (current = []) => current.map((item) => item.id === context?.clientId ? { ...item, deliveryState: "failed" } : item));
     }
   });
   const createFlow = useMutation({
-    mutationFn: (messageId: string) => app.workspace!.createFlowFromMessage(spaceId, messageId),
+    mutationFn: (messageId: string) => app.workspace!.createFlowFromMessage(space!.id, messageId),
     onSuccess: async (flow) => {
       app.refreshWorkspace();
       await invalidateWorkspaceQueries(queryClient, app.mode);
-      navigate(`/spaces/${spaceId}/flows/${flow.id}`);
+      navigate(`/spaces/${flow.spaceId}/flows/${flow.id}`);
     }
   });
   const retryMutation = useMutation({
     mutationFn: async (messageId: string) => {
       if (!app.workspace?.retryMessage) throw new Error("当前环境暂不支持消息重试");
-      return app.workspace.retryMessage(spaceId, messageId);
+      return app.workspace.retryMessage(space!.id, messageId);
     },
     onMutate: async (messageId) => {
-      await queryClient.cancelQueries({ queryKey: ["workspace", app.mode, app.session, "messages", spaceId] });
-      queryClient.setQueryData<SpaceMessage[]>(["workspace", app.mode, app.session, "messages", spaceId], (current = []) => current.map((item) => item.id === messageId ? { ...item, deliveryState: "sending" } : item));
+      await queryClient.cancelQueries({ queryKey: ["workspace", app.mode, app.session, "messages", resolvedSpaceId] });
+      queryClient.setQueryData<SpaceMessage[]>(["workspace", app.mode, app.session, "messages", resolvedSpaceId], (current = []) => current.map((item) => item.id === messageId ? { ...item, deliveryState: "sending" } : item));
     },
     onSuccess: (message) => {
-      queryClient.setQueryData<SpaceMessage[]>(["workspace", app.mode, app.session, "messages", spaceId], (current = []) => current.map((item) => item.id === message.id ? message : item));
+      queryClient.setQueryData<SpaceMessage[]>(["workspace", app.mode, app.session, "messages", resolvedSpaceId], (current = []) => current.map((item) => item.id === message.id ? message : item));
       void queryClient.invalidateQueries({ queryKey: ["workspace", app.mode, app.session, "spaces"] });
     },
     onError: (_error, messageId) => {
-      queryClient.setQueryData<SpaceMessage[]>(["workspace", app.mode, app.session, "messages", spaceId], (current = []) => current.map((item) => item.id === messageId ? { ...item, deliveryState: "failed" } : item));
+      queryClient.setQueryData<SpaceMessage[]>(["workspace", app.mode, app.session, "messages", resolvedSpaceId], (current = []) => current.map((item) => item.id === messageId ? { ...item, deliveryState: "failed" } : item));
     }
   });
 
