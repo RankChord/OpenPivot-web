@@ -164,6 +164,7 @@ npm run test
 当前测试重点覆盖：
 
 - Rust HTTP Adapter 的请求封装、刷新令牌和重试逻辑
+- Session Bootstrap 的 Refresh Token 恢复和失败匿名状态
 - 工作区领域模型在 Demo 与 Connected 模式下的数据映射
 - Demo 消息发送、联系请求和流程审批状态联动
 - Composer 的 Enter、Shift+Enter 和中文输入法组合输入行为
@@ -180,7 +181,17 @@ npm run test
 │   ├── adapters/
 │   │   ├── rustHttpAdapter.ts
 │   │   └── tokenStore.ts
+│   ├── app/
+│   │   ├── AppContext.ts
+│   │   ├── AppRouter.tsx
+│   │   ├── AppShell.tsx
+│   │   ├── sessionBootstrap.ts
+│   │   └── sessionBootstrap.test.ts
 │   ├── components/
+│   │   ├── avatar/
+│   │   ├── composer/
+│   │   ├── feedback/
+│   │   ├── message/
 │   │   └── Composer.test.tsx
 │   ├── data/
 │   │   └── demo.ts
@@ -191,6 +202,15 @@ npm run test
 │   │   ├── models.ts
 │   │   ├── workspaceAdapter.ts
 │   │   └── workspaceModel.test.ts
+│   ├── features/
+│   │   ├── auth/
+│   │   ├── flows/
+│   │   ├── inbox/
+│   │   ├── participants/
+│   │   ├── settings/
+│   │   └── spaces/
+│   ├── shared/
+│   │   └── format.ts
 │   ├── App.tsx
 │   ├── config.ts
 │   ├── main.tsx

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { Composer } from "../App";
+import { Composer } from "./composer/Composer";
 import { demoCapabilities } from "../domain/capabilities";
 
 describe("Composer", () => {
