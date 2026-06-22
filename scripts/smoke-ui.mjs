@@ -289,7 +289,15 @@ localStorage.setItem("openpivot.web.theme", "light");
 view = renderWithProviders(React.createElement(AppRouter), { initialEntries: ["/inbox"] });
 
 await screen.findByText("陈默等待你确认协议变更");
+assert(document.querySelector('a[href="/participants/mira"]'), "Inbox contact request must link to participant context");
 assert(document.querySelector('a[href="/spaces/core#core-4"]'), "Inbox mention must link to the exact message context");
+clickHref("/participants/mira");
+await screen.findByText("Mira");
+const pendingProfile = document.querySelector(".profile-static");
+assert(pendingProfile?.textContent?.includes("请先处理联系请求"), "Pending inbound participant profile must point back to inbox handling");
+assert(!Array.from(pendingProfile?.querySelectorAll("button") || []).some((button) => button.textContent?.trim() === "建立联系"), "Pending inbound participant profile must not offer a duplicate contact request");
+clickHref("/inbox");
+await screen.findByText("陈默等待你确认协议变更");
 clickHref("/spaces/core");
 await screen.findByPlaceholderText("给 OpenPivot 核心开发 发送消息...");
 assert(document.getElementById("core-4")?.getAttribute("data-message-id") === "core-4", "Message context links must have matching DOM anchors");
@@ -337,6 +345,7 @@ console.log(JSON.stringify({
     "participant-self-profile-disables-direct-space",
     "legacy-unknown-chat-returns-to-inbox",
     "inbox-message-context-links-have-anchors",
+    "inbox-contact-request-links-to-participant",
     "demo-app-inbox-space-send-participants-flow-approval",
     "demo-failed-message-retry",
     "connected-flows-hide-unsupported-create"

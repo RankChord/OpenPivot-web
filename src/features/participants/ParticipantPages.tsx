@@ -93,7 +93,23 @@ export function ParticipantDetailPage({ app }: { app: AppContextValue }) {
   const isSelf = participant.relationship === "self";
   const canStart = participant.relationship === "connected";
   const canRequest = participant.relationship === "none";
-  const startReason = isSelf ? "这是当前身份，不能和自己创建一对一协作空间" : "请先建立联系";
+  const startReason = isSelf
+    ? "这是当前身份，不能和自己创建一对一协作空间"
+    : participant.relationship === "pending_inbound"
+      ? "请先在收件箱处理联系请求"
+      : participant.relationship === "pending_outbound"
+        ? "联系请求已发送，等待对方接受"
+        : "请先建立联系";
+  const inviteBlocked = participant.relationship === "pending_inbound" ? {
+    title: "请先处理联系请求",
+    detail: "接受联系请求后，才能邀请参与者进入已有协作空间。"
+  } : participant.relationship === "pending_outbound" ? {
+    title: "等待对方接受联系请求",
+    detail: "联系建立后，才能邀请参与者进入已有协作空间。"
+  } : {
+    title: "请先建立联系",
+    detail: "建立联系后，才能邀请参与者进入已有协作空间。"
+  };
   const inviteReason = unavailableReason("spaceInvites", app.environment.capabilities);
   const canInvite = participant.relationship === "connected" && !inviteReason;
   const inviteSpaces = (spacesQuery.data || []).filter((space) => !space.participantIds.includes(participant.id));
@@ -120,7 +136,7 @@ export function ParticipantDetailPage({ app }: { app: AppContextValue }) {
           <section className="participant-picker profile-invite">
             <h2>邀请加入空间</h2>
             {inviteReason && <InlineState title="当前环境不可邀请" detail={inviteReason} />}
-            {!inviteReason && participant.relationship !== "connected" && <InlineState title="请先建立联系" detail="建立联系后，才能邀请参与者进入已有协作空间。" />}
+            {!inviteReason && participant.relationship !== "connected" && <InlineState title={inviteBlocked.title} detail={inviteBlocked.detail} />}
             {canInvite && !spacesQuery.isLoading && !inviteSpaces.length && <p className="muted">没有可邀请的协作空间。</p>}
             {canInvite && inviteSpaces.map((space) => {
               const selected = inviteSpaceId === space.id;

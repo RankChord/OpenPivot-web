@@ -111,5 +111,6 @@ function inboxTarget(item: InboxItem) {
   if (item.flowId) return `/spaces/${item.spaceId}/flows/${item.flowId}`;
   if (item.messageId) return `/spaces/${item.spaceId}#${item.messageId}`;
   if (item.spaceId) return `/spaces/${item.spaceId}`;
+  if (item.participantId) return `/participants/${item.participantId}`;
   return "/inbox";
 }

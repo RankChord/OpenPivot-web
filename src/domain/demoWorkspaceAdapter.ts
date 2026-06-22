@@ -110,7 +110,7 @@ function createInitialStore(): DemoStore {
       displayName: "Mira",
       handle: "@mira",
       title: "待确认身份",
-      relationship: "none",
+      relationship: "pending_inbound",
       description: "尚未建立联系的外部参与者。"
     }
   ];
@@ -479,6 +479,7 @@ export class DemoWorkspaceAdapter implements WorkspaceAdapter {
     const request = store.requests.find((item) => item.id === requestId);
     if (!request) throw new Error("没有找到联系请求");
     request.status = "rejected";
+    request.participant.relationship = "none";
     store.inbox = store.inbox.filter((item) => item.requestId !== requestId);
     return wait(request);
   }

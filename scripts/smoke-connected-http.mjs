@@ -195,6 +195,8 @@ try {
 
   const inbox = await workspace.listInboxItems();
   assert(inbox[0].requestId === "10", "incoming contact request should appear in inbox");
+  const inboxParticipant = await workspace.getParticipant(inbox[0].participantId);
+  assert(inboxParticipant?.relationship === "pending_inbound", "incoming contact request participant should be addressable from inbox context");
   await workspace.acceptContactRequest(inbox[0].requestId);
 
   const space = await workspace.createDirectSpace("user-2");

@@ -80,6 +80,20 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
     return this.rust.listFriends().catch(() => []);
   }
 
+  private async contactRequests(): Promise<ContactRequest[]> {
+    const requests = await this.rust.listFriendRequests().catch(() => []);
+    return requests.map(requestToContactRequest);
+  }
+
+  private mergeParticipants(participants: Participant[]): Participant[] {
+    const seen = new Set<string>();
+    return participants.filter((participant) => {
+      if (seen.has(participant.id)) return false;
+      seen.add(participant.id);
+      return true;
+    });
+  }
+
   private async sourceConversationId(spaceId: string): Promise<number> {
     const fromRoute = Number(spaceId.replace("conversation-", ""));
     if (Number.isFinite(fromRoute) && fromRoute > 0) return fromRoute;
@@ -115,8 +129,11 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
   }
 
   async listParticipants(): Promise<Participant[]> {
-    const friends = await this.friendList();
-    return [
+    const [friends, requests] = await Promise.all([
+      this.friendList(),
+      this.contactRequests()
+    ]);
+    return this.mergeParticipants([
       {
         id: `user-${this.currentUserId}`,
         sourceId: this.currentUserId,
@@ -126,8 +143,9 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
         relationship: "self",
         description: "当前真实后端登录身份。"
       },
+      ...requests.map((request) => request.participant),
       ...friends.map((friend) => userParticipant(friend))
-    ];
+    ]);
   }
 
   async getParticipant(participantId: string): Promise<Participant | null> {
@@ -139,9 +157,13 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
     const normalized = query.trim();
     if (!normalized) return this.listParticipants();
     const users = await this.rust.searchUsers(normalized);
-    const friends = await this.friendList();
+    const [friends, requests] = await Promise.all([
+      this.friendList(),
+      this.contactRequests()
+    ]);
     const friendIds = new Set(friends.map((friend) => friend.id));
-    return users.map((user) => userParticipant(user, friendIds.has(user.id) ? "connected" : "none"));
+    const requestRelationships = new Map(requests.map((request) => [request.participant.sourceId, request.participant.relationship]));
+    return users.map((user) => userParticipant(user, friendIds.has(user.id) ? "connected" : requestRelationships.get(user.id) || "none"));
   }
 
   async createDirectSpace(participantId: string): Promise<CollaborationSpace> {
@@ -154,8 +176,7 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
   }
 
   async listContactRequests(): Promise<ContactRequest[]> {
-    const requests = await this.rust.listFriendRequests();
-    return requests.map(requestToContactRequest);
+    return this.contactRequests();
   }
 
   async createContactRequest(participantId: string, message?: string): Promise<ContactRequest> {

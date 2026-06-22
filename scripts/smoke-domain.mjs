@@ -70,7 +70,7 @@ const rust = {
   createDirectConversation: async () => ({ id: 9, conversation_type: "direct", user_low_id: 1, user_high_id: 2 }),
   createFriendRequest: async () => ({ id: 3, requester_id: 1, addressee_id: 2, status: "pending", message: "hello" }),
   listConversations: async () => [{ id: 9, conversation_type: "direct", user_low_id: 1, user_high_id: 2 }],
-  listFriendRequests: async () => [],
+  listFriendRequests: async () => [{ id: 4, requester_id: 4, addressee_id: 1, status: "pending", message: "please connect" }],
   listFriends: async () => [{ id: 2, username: "bob", nickname: "Bob" }],
   listMessages: async (conversationId) => [{ id: 1, conversation_id: conversationId, sender_id: 2, content: "hi", created_at: "2026-06-23T00:00:00Z" }],
   rejectFriendRequest: async () => ({ id: 3, requester_id: 2, addressee_id: 1, status: "rejected", message: "hello" }),
@@ -79,6 +79,8 @@ const rust = {
 };
 
 const connected = new ConnectedWorkspaceAdapter(rust, 1);
+const pendingParticipant = await connected.getParticipant("user-4");
+assert(pendingParticipant?.relationship === "pending_inbound", "Connected incoming contact request participant must be addressable before becoming a contact");
 const spaces = await connected.listSpaces();
 assert(spaces[0].id === "conversation-9", "Connected direct conversation must map to a stable space URL");
 assert(spaces[0].kind === "direct", "Connected direct conversation must map to a direct collaboration space");
