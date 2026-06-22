@@ -150,6 +150,22 @@ assert((await connectedRelationshipWins.getParticipant("user-2"))?.relationship 
 const spaces = await connected.listSpaces();
 assert(spaces[0].id === "conversation-9", "Connected direct conversation must map to a stable space URL");
 assert(spaces[0].kind === "direct", "Connected direct conversation must map to a direct collaboration space");
+let invalidConversationMessagesCalled = false;
+const invalidConversationAdapter = new ConnectedWorkspaceAdapter({
+  ...rust,
+  listMessages: async () => {
+    invalidConversationMessagesCalled = true;
+    return [];
+  }
+}, 1);
+let invalidConversationRejected = false;
+try {
+  await invalidConversationAdapter.listMessages("conversation-999");
+} catch {
+  invalidConversationRejected = true;
+}
+assert(invalidConversationRejected, "Connected messages must reject conversation ids outside the resolved space list");
+assert(!invalidConversationMessagesCalled, "Connected invalid conversation ids must not hit the backend messages endpoint");
 const sent = await connected.sendMessage("conversation-9", "connected smoke");
 assert(sent.spaceId === "conversation-9", "Connected send must map the backend message into the current space");
 assert(sent.blocks[0].text === "connected smoke", "Connected sent text must render through message blocks");

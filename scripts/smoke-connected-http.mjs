@@ -77,6 +77,7 @@ const state = {
   accessToken: "access-initial",
   conversationCreated: false,
   friends: [],
+  invalidMessageFetches: 0,
   incomingRequests: [
     { id: 10, requester_id: 2, addressee_id: 1, status: "pending", message: "我想加入协作。" }
   ],
@@ -157,6 +158,10 @@ const server = http.createServer(async (req, res) => {
     if (pathName === "/v1/conversations" && method === "GET") {
       return json(res, 200, state.conversationCreated ? [{ id: 21, conversation_type: "direct", user_low_id: 1, user_high_id: 2 }] : []);
     }
+    if (pathName === "/v1/conversations/999/messages") {
+      state.invalidMessageFetches += 1;
+      return json(res, 500, { code: "invalid_space_leak", message: "Invalid conversation was requested" });
+    }
     if (pathName === "/v1/conversations/21/messages" && method === "GET") return json(res, 200, state.messages);
     if (pathName === "/v1/conversations/21/messages" && method === "POST") {
       const body = await readBody(req);
@@ -226,6 +231,14 @@ try {
   assert(sent.blocks[0].text === "Connected HTTP smoke", "sent connected message should use content blocks");
   const messages = await workspace.listMessages(space.id);
   assert(messages.at(-1)?.id === sent.id, "sent connected message should be readable from the selected space");
+  let invalidConversationRejected = false;
+  try {
+    await workspace.listMessages("conversation-999");
+  } catch {
+    invalidConversationRejected = true;
+  }
+  assert(invalidConversationRejected, "connected workspace should reject invalid conversation route ids");
+  assert(state.invalidMessageFetches === 0, "invalid conversation route ids should not reach the backend messages endpoint");
 
   await restoredAdapter.logout();
   assert(store.get() === null, "logout should clear refresh token");

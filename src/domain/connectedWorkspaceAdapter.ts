@@ -116,9 +116,8 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
 
   private async sourceConversationId(spaceId: string): Promise<number> {
     const fromRoute = Number(spaceId.replace("conversation-", ""));
-    if (Number.isFinite(fromRoute) && fromRoute > 0) return fromRoute;
     const spaces = await this.listSpaces();
-    const space = spaces.find((item) => item.id === spaceId);
+    const space = spaces.find((item) => item.id === spaceId || item.sourceConversationId === fromRoute);
     if (!space?.sourceConversationId) throw new Error("没有找到协作空间");
     return space.sourceConversationId;
   }
