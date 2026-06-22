@@ -3,9 +3,9 @@ import clsx from "clsx";
 import { ChevronRight } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import type { AppContextValue } from "../../app/AppContext";
-import { invalidateWorkspaceQueries } from "../../app/AppContext";
+import { applyInboxApprovalToFlowCache, invalidateWorkspaceQueries } from "../../app/AppContext";
 import { unavailableReason } from "../../domain/capabilities";
-import type { CollaborationFlow } from "../../domain/models";
+import type { CollaborationFlow, InboxItem } from "../../domain/models";
 import { EmptyState, InlinePage, InlineState, PageTitle } from "../../components/feedback/Feedback";
 export function FlowsOverviewPage({ app }: { app: AppContextValue }) {
   const flowsQuery = useQuery({
@@ -51,17 +51,28 @@ export function FlowDetailPage({ app }: { app: AppContextValue }) {
     queryFn: () => app.workspace!.getFlow(spaceId, flowId),
     enabled: !!app.workspace && !!spaceId && !!flowId
   });
+  const inboxQuery = useQuery({
+    queryKey: ["workspace", app.mode, app.session, "inbox"],
+    queryFn: () => app.workspace!.listInboxItems(),
+    enabled: !!app.workspace && !!spaceId && !!flowId
+  });
   const complete = useMutation({
-    mutationFn: () => app.workspace!.completeInboxItem(`inbox-approval-${spaceId}`, "approve"),
-    onSuccess: () => {
+    mutationFn: (item: InboxItem) => app.workspace!.completeInboxItem(item.id, "approve"),
+    onSuccess: async (_result, item) => {
+      queryClient.setQueryData<CollaborationFlow | null>(
+        ["workspace", app.mode, app.session, app.workspaceVersion, "flow", spaceId, flowId],
+        (flow) => applyInboxApprovalToFlowCache(flow, item.stepId!, "approve")
+      );
       app.refreshWorkspace();
-      return invalidateWorkspaceQueries(queryClient, app.mode);
+      await invalidateWorkspaceQueries(queryClient, app.mode);
     }
   });
   const flow = flowQuery.data;
   if (flowQuery.isLoading) return <InlinePage title="正在打开协作流程" />;
   if (!flow) return <InlinePage title="没有找到协作流程" detail="真实后端暂未接入流程，或该流程不存在。" action={<Link className="primary-button" to={`/spaces/${spaceId}/flows`}>返回流程列表</Link>} />;
   const waiting = flow.steps.find((step) => step.id === flow.waitingStepId && step.status === "waiting");
+  const approvalItem = (inboxQuery.data || []).find((item) => item.kind === "approval" && item.status === "open" && item.spaceId === spaceId && item.flowId === flow.id && item.stepId === waiting?.id);
+  const approvalReason = unavailableReason("approvals", app.environment.capabilities) || "当前收件箱没有匹配此流程步骤的审批事项。";
   return (
     <section className="center-page page-fade">
       <div className="main-column">
@@ -83,11 +94,11 @@ export function FlowDetailPage({ app }: { app: AppContextValue }) {
             ))}
           </div>
         </article>
-        {waiting && app.environment.capabilities.approvals && (
+        {waiting && (
           <div className="flow-run-card">
             <strong>{flow.title} 正在等待处理</strong>
             <small>{waiting.title}</small>
-            <button className="primary-button" disabled={complete.isPending} onClick={() => complete.mutate()}>批准并继续</button>
+            <button className="primary-button" disabled={complete.isPending || !approvalItem || !app.environment.capabilities.approvals} title={approvalItem && app.environment.capabilities.approvals ? undefined : approvalReason} onClick={() => approvalItem && complete.mutate(approvalItem)}>批准并继续</button>
           </div>
         )}
       </div>

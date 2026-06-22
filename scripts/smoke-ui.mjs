@@ -96,7 +96,7 @@ const { cleanup, fireEvent, render, screen, waitFor } = nodeRequire("@testing-li
 
 const { CommandPanel, NewMenu } = loadTsModule("src/app/AppShell.tsx");
 const { default: AppRouter } = loadTsModule("src/app/AppRouter.tsx");
-const { FlowsOverviewPage } = loadTsModule("src/features/flows/FlowPages.tsx");
+const { FlowDetailPage, FlowsOverviewPage } = loadTsModule("src/features/flows/FlowPages.tsx");
 const { SettingsPage } = loadTsModule("src/features/settings/SettingsPage.tsx");
 const { CreateSpacePage, SpacesPage, SpaceFlowsPage } = loadTsModule("src/features/spaces/SpacePages.tsx");
 const { demoCapabilities, rustCapabilities } = loadTsModule("src/domain/capabilities.ts");
@@ -159,6 +159,7 @@ const disabledCreateSpace = screen.getByRole("button", { name: "新建协作空�
 assert(disabledCreateSpace.disabled, "Connected new menu must disable unsupported group space creation");
 assert(!document.querySelector('a[href="/spaces/new"]'), "Connected new menu must not expose /spaces/new as a clickable link");
 assert(!document.body.textContent?.includes("与参与者开始对话"), "New menu must not promise a direct conversation action");
+assert(!document.body.textContent?.includes("建立联系"), "New menu must not expose connection management as daily navigation");
 assert(document.body.textContent?.includes("查找参与者"), "New menu should route users to participant discovery");
 view.dispose();
 
@@ -311,6 +312,77 @@ await screen.findByText("真实后端暂未接入流程");
 assert(!document.querySelector('a[href="/flows/new"]'), "Connected flow overview must not expose unsupported global flow creation");
 view.dispose();
 
+const approvalFlow = {
+  id: "approval-flow",
+  spaceId: "release",
+  status: "active",
+  title: "发布审批",
+  trigger: "UI smoke approval",
+  waitingStepId: "review",
+  steps: [
+    { id: "trigger", kind: "trigger", title: "触发", detail: "来自空间", status: "completed" },
+    { id: "review", kind: "approval", title: "等待验证", detail: "需要人工批准", status: "waiting" }
+  ]
+};
+let approvedInboxItem = "";
+view = renderWithProviders(
+  React.createElement(Routes, null,
+    React.createElement(Route, {
+      path: "/spaces/:spaceId/flows/:flowId",
+      element: React.createElement(FlowDetailPage, {
+        app: createApp({ capabilities: demoCapabilities, mode: "demo", workspace: {
+          getFlow: async (spaceId, flowId) => {
+            assert(spaceId === "release" && flowId === "approval-flow", "Flow detail must request the route-bound flow");
+            return approvalFlow;
+          },
+          listInboxItems: async () => [{
+            id: "approval-release",
+            kind: "approval",
+            priority: "action",
+            title: "审批发布",
+            detail: "等待验证",
+            createdAt: "2026-06-23T00:00:00Z",
+            spaceId: "release",
+            flowId: "approval-flow",
+            stepId: "review",
+            status: "open"
+          }],
+          completeInboxItem: async (itemId, action) => {
+            approvedInboxItem = `${itemId}:${action}`;
+          }
+        } })
+      })
+    })
+  ),
+  { initialEntries: ["/spaces/release/flows/approval-flow"] }
+);
+const approvalButton = await screen.findByRole("button", { name: "批准并继续" });
+fireEvent.click(approvalButton);
+await waitFor(() => assert(approvedInboxItem === "approval-release:approve", "Flow approval must use the matching inbox item instead of a synthesized id"));
+view.dispose();
+
+view = renderWithProviders(
+  React.createElement(Routes, null,
+    React.createElement(Route, {
+      path: "/spaces/:spaceId/flows/:flowId",
+      element: React.createElement(FlowDetailPage, {
+        app: createApp({ capabilities: demoCapabilities, mode: "demo", workspace: {
+          getFlow: async () => approvalFlow,
+          listInboxItems: async () => [],
+          completeInboxItem: async () => {
+            throw new Error("Missing inbox approval items must not be actionable");
+          }
+        } })
+      })
+    })
+  ),
+  { initialEntries: ["/spaces/release/flows/approval-flow"] }
+);
+const missingApprovalButton = await screen.findByRole("button", { name: "批准并继续" });
+assert(missingApprovalButton.disabled, "Flow approval button must be disabled without a matching inbox item");
+assert(missingApprovalButton.getAttribute("title")?.includes("当前收件箱没有匹配"), "Disabled flow approval must explain the missing inbox item");
+view.dispose();
+
 resetDemoWorkspace();
 localStorage.setItem("openpivot.web.mode", "demo");
 localStorage.setItem("openpivot.web.theme", "light");
@@ -428,6 +500,7 @@ console.log(JSON.stringify({
     "connected-spaces-empty-state-guides-to-participants",
     "create-space-requires-connected-participants",
     "space-flow-create-binds-current-space",
+    "flow-detail-approval-requires-matching-inbox-item",
     "participant-self-profile-disables-direct-space",
     "legacy-unknown-chat-returns-to-inbox",
     "missing-space-subroutes-stop-false-context",
