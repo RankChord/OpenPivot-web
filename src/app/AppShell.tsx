@@ -151,7 +151,7 @@ export function NewMenu({ app, onClose }: { app: AppContextValue; onClose: () =>
       <Link to="/participants" onClick={onClose}>建立联系</Link>
       {flowReason ? <button className="new-menu-action" disabled title={flowReason}>
         新建协作流程
-      </button> : <Link to="/flows/new" onClick={onClose}>新建协作流程</Link>}
+      </button> : <Link to="/spaces" onClick={onClose}>从空间创建协作流程</Link>}
     </div>
   );
 }

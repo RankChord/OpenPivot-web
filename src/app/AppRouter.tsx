@@ -14,7 +14,7 @@ import { Shell } from "./AppShell";
 import type { AppContextValue, ThemeMode } from "./AppContext";
 import { InboxPage } from "../features/inbox/InboxPage";
 import { SpacesPage, CreateSpacePage, SpaceTimelinePage, SpaceParticipantsPage, SpaceFlowsPage } from "../features/spaces/SpacePages";
-import { FlowsOverviewPage, FlowDetailPage, CreateFlowPage } from "../features/flows/FlowPages";
+import { FlowsOverviewPage, FlowDetailPage } from "../features/flows/FlowPages";
 import { ParticipantsPage, ParticipantDetailPage } from "../features/participants/ParticipantPages";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { AuthPage, AuthRequired, BootingPage } from "../features/auth/AuthPages";
@@ -147,7 +147,6 @@ function App() {
         <Route path="/participants" element={<RequireWorkspace app={app}><ParticipantsPage app={app} /></RequireWorkspace>} />
         <Route path="/participants/:participantId" element={<RequireWorkspace app={app}><ParticipantDetailPage app={app} /></RequireWorkspace>} />
         <Route path="/flows" element={<RequireWorkspace app={app}><FlowsOverviewPage app={app} /></RequireWorkspace>} />
-        <Route path="/flows/new" element={<RequireWorkspace app={app}><CreateFlowPage app={app} /></RequireWorkspace>} />
         <Route path="/settings" element={<SettingsPage app={app} />} />
         <Route path="/login" element={<AuthPage app={app} kind="login" />} />
         <Route path="/register" element={<AuthPage app={app} kind="register" />} />

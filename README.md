@@ -33,7 +33,6 @@ OpenPivot Web 不再把聊天、好友、机器人和流程拆成后台式模块
 /participants
 /participants/:participantId
 /flows
-/flows/new
 /settings
 /login
 /register
@@ -191,7 +190,7 @@ npm run test:ui
 - 未识别的旧消息入口参数会回到收件箱，不会伪装成某个空间
 - Demo Mode 的失败消息会保留在协作空间时间线，并可通过重试恢复为已发送状态
 - Demo 消息发送、联系请求和流程审批状态联动
-- 全局创建流程必须选择所属协作空间
+- 空间内创建流程草稿会直接绑定当前协作空间
 - Connected Mode 不支持的空间/流程入口不会渲染成可跳转假按钮
 - 新建菜单和命令搜索只展示真实可达的动作与搜索域
 - 当前身份的参与者资料页不会提供一对一空间或联系请求假动作

@@ -88,13 +88,13 @@ globalThis.cancelAnimationFrame = clearTimeout;
 
 const React = nodeRequire("react");
 const { QueryClient, QueryClientProvider } = nodeRequire("@tanstack/react-query");
-const { MemoryRouter } = nodeRequire("react-router-dom");
+const { MemoryRouter, Route, Routes } = nodeRequire("react-router-dom");
 const { cleanup, fireEvent, render, screen, waitFor } = nodeRequire("@testing-library/react");
 
 const { CommandPanel, NewMenu } = loadTsModule("src/app/AppShell.tsx");
 const { default: AppRouter } = loadTsModule("src/app/AppRouter.tsx");
-const { CreateFlowPage, FlowsOverviewPage } = loadTsModule("src/features/flows/FlowPages.tsx");
-const { SpacesPage } = loadTsModule("src/features/spaces/SpacePages.tsx");
+const { FlowsOverviewPage } = loadTsModule("src/features/flows/FlowPages.tsx");
+const { SpacesPage, SpaceFlowsPage } = loadTsModule("src/features/spaces/SpacePages.tsx");
 const { demoCapabilities, rustCapabilities } = loadTsModule("src/domain/capabilities.ts");
 const { DemoWorkspaceAdapter, resetDemoWorkspace } = loadTsModule("src/domain/demoWorkspaceAdapter.ts");
 
@@ -159,6 +159,16 @@ assert(document.body.textContent?.includes("查找参与者"), "New menu should 
 view.dispose();
 
 view = renderWithProviders(
+  React.createElement(NewMenu, {
+    app: createApp({ capabilities: demoCapabilities, mode: "demo", workspace: connectedWorkspace }),
+    onClose: () => undefined
+  })
+);
+assert(!document.querySelector('a[href="/flows/new"]'), "Demo new menu must not expose global flow creation");
+assert(document.querySelector('a[href="/spaces"]')?.textContent?.includes("从空间创建协作流程"), "Demo new menu must route flow creation through spaces");
+view.dispose();
+
+view = renderWithProviders(
   React.createElement(CommandPanel, {
     app: createApp({ capabilities: rustCapabilities, mode: "connected", workspace: connectedWorkspace }),
     onClose: () => undefined
@@ -181,7 +191,7 @@ view.dispose();
 resetDemoWorkspace();
 const demoWorkspace = new DemoWorkspaceAdapter();
 assert((await demoWorkspace.listSpaces()).length > 0, "Demo workspace must provide spaces for UI smoke setup");
-const flowFormWorkspace = {
+const spaceFlowWorkspace = {
   createFlow: async (input) => ({
     id: "ui-flow",
     spaceId: input.spaceId,
@@ -200,17 +210,30 @@ const flowFormWorkspace = {
   ]
 };
 view = renderWithProviders(
-  React.createElement(CreateFlowPage, {
-    app: createApp({ capabilities: demoCapabilities, mode: "demo", workspace: flowFormWorkspace })
-  })
+  React.createElement(Routes, null,
+    React.createElement(Route, {
+      path: "/spaces/:spaceId/flows",
+      element: React.createElement(SpaceFlowsPage, {
+        app: createApp({ capabilities: demoCapabilities, mode: "demo", workspace: {
+          ...spaceFlowWorkspace,
+          createFlow: async (input) => {
+            assert(input.spaceId === "release", "Space flow creation must bind to the current space");
+            return spaceFlowWorkspace.createFlow(input);
+          },
+          listFlows: async (spaceId) => {
+            assert(spaceId === "release", "Space flow page must list flows for the current space");
+            return [];
+          }
+        } })
+      })
+    }),
+    React.createElement(Route, { path: "/spaces/:spaceId/flows/:flowId", element: React.createElement("p", null, "space-bound-flow-created") })
+  ),
+  { initialEntries: ["/spaces/release/flows"] }
 );
-await screen.findByText("所属协作空间");
-const createButton = screen.getByRole("button", { name: "创建流程草稿" });
-assert(createButton.disabled, "Create flow button must stay disabled before a space is selected");
-const releaseRadio = Array.from(document.querySelectorAll('input[name="spaceId"]')).find((input) => input.value === "release");
-assert(releaseRadio, "Create flow page must list existing collaboration spaces");
-fireEvent.click(releaseRadio);
-await waitFor(() => assert(!createButton.disabled, "Create flow button must enable after selecting the owning space"));
+await screen.findByText("流程属于当前协作空间，负责请求参与者并等待回复或审批。");
+fireEvent.click(screen.getByRole("button", { name: "新建流程草稿" }));
+await screen.findByText("space-bound-flow-created");
 view.dispose();
 
 view = renderWithProviders(
@@ -307,9 +330,10 @@ console.log(JSON.stringify({
   checks: [
     "connected-new-menu-gates-group-space",
     "new-menu-uses-participant-discovery-language",
+    "new-menu-routes-flow-creation-through-spaces",
     "command-search-only-advertises-supported-domains",
     "connected-spaces-empty-state-guides-to-participants",
-    "demo-create-flow-requires-space",
+    "space-flow-create-binds-current-space",
     "participant-self-profile-disables-direct-space",
     "legacy-unknown-chat-returns-to-inbox",
     "inbox-message-context-links-have-anchors",

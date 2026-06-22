@@ -262,17 +262,31 @@ export function SpaceParticipantsPage({ app }: { app: AppContextValue }) {
 
 export function SpaceFlowsPage({ app }: { app: AppContextValue }) {
   const { spaceId = "" } = useParams();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const flowsQuery = useQuery({
     queryKey: ["workspace", app.mode, app.session, "flows", spaceId],
     queryFn: () => app.workspace!.listFlows(spaceId),
     enabled: !!app.workspace && !!spaceId
   });
   const reason = unavailableReason("collaborationFlows", app.environment.capabilities);
+  const createFlow = useMutation({
+    mutationFn: () => app.workspace!.createFlow({ spaceId }),
+    onSuccess: async (flow) => {
+      app.refreshWorkspace();
+      await invalidateWorkspaceQueries(queryClient, app.mode);
+      navigate(`/spaces/${flow.spaceId}/flows/${flow.id}`);
+    }
+  });
+  const action = reason
+    ? <button className="quiet-button" disabled title={reason}>新建流程草稿</button>
+    : <button className="quiet-button" disabled={createFlow.isPending} onClick={() => createFlow.mutate()}>新建流程草稿</button>;
   return (
     <section className="center-page page-fade">
       <div className="main-column">
-        <PageTitle title="协作流程" subtitle="流程属于当前协作空间，负责请求参与者并等待回复或审批。" action={<Link className="quiet-button" to={`/spaces/${spaceId}`}>回到对话</Link>} />
+        <PageTitle title="协作流程" subtitle="流程属于当前协作空间，负责请求参与者并等待回复或审批。" action={<div className="button-row">{action}<Link className="quiet-button" to={`/spaces/${spaceId}`}>回到对话</Link></div>} />
         {reason && <InlineState title="当前环境暂未接入协作流程" detail={reason} />}
+        {createFlow.error && <p className="form-error">{(createFlow.error as Error).message}</p>}
         <FlowList flows={flowsQuery.data || []} />
       </div>
     </section>
