@@ -90,7 +90,10 @@ export function ParticipantDetailPage({ app }: { app: AppContextValue }) {
   const participant = participantQuery.data;
   if (participantQuery.isLoading) return <InlinePage title="正在打开参与者资料" />;
   if (!participant) return <InlinePage title="没有找到参与者" action={<Link className="primary-button" to="/participants">返回参与者</Link>} />;
-  const canStart = participant.relationship === "connected" || participant.relationship === "self";
+  const isSelf = participant.relationship === "self";
+  const canStart = participant.relationship === "connected";
+  const canRequest = participant.relationship === "none";
+  const startReason = isSelf ? "这是当前身份，不能和自己创建一对一协作空间" : "请先建立联系";
   const inviteReason = unavailableReason("spaceInvites", app.environment.capabilities);
   const canInvite = participant.relationship === "connected" && !inviteReason;
   const inviteSpaces = (spacesQuery.data || []).filter((space) => !space.participantIds.includes(participant.id));
@@ -108,27 +111,29 @@ export function ParticipantDetailPage({ app }: { app: AppContextValue }) {
           {participant.connectionLabel && <><dt>连接</dt><dd>{participant.connectionLabel}</dd></>}
         </dl>
         <div className="button-row">
-          <button className="primary-button" disabled={!canStart || directSpace.isPending} title={canStart ? undefined : "请先建立联系"} onClick={() => directSpace.mutate()}>
+          <button className="primary-button" disabled={!canStart || directSpace.isPending} title={canStart ? undefined : startReason} onClick={() => directSpace.mutate()}>
             开始一对一协作空间
           </button>
-          {!canStart && <button className="quiet-button" disabled={request.isPending || !app.environment.capabilities.contactRequests} title={unavailableReason("contactRequests", app.environment.capabilities) || undefined} onClick={() => request.mutate()}>建立联系</button>}
+          {canRequest && <button className="quiet-button" disabled={request.isPending || !app.environment.capabilities.contactRequests} title={unavailableReason("contactRequests", app.environment.capabilities) || undefined} onClick={() => request.mutate()}>建立联系</button>}
         </div>
-        <section className="participant-picker profile-invite">
-          <h2>邀请加入空间</h2>
-          {inviteReason && <InlineState title="当前环境不可邀请" detail={inviteReason} />}
-          {!inviteReason && participant.relationship !== "connected" && <InlineState title="请先建立联系" detail="建立联系后，才能邀请参与者进入已有协作空间。" />}
-          {canInvite && !spacesQuery.isLoading && !inviteSpaces.length && <p className="muted">没有可邀请的协作空间。</p>}
-          {canInvite && inviteSpaces.map((space) => {
-            const selected = inviteSpaceId === space.id;
-            return (
-              <label key={space.id} className={clsx("picker-row", selected && "selected")}>
-                <input type="radio" name="inviteSpace" value={space.id} checked={selected} onChange={() => setInviteSpaceId(space.id)} />
-                <span><strong>{space.title}</strong><small>{space.kind === "direct" ? "一对一协作空间" : `${space.participantIds.length} 位参与者`}</small></span>
-              </label>
-            );
-          })}
-          {canInvite && <button className="quiet-button" disabled={!inviteSpaceId || invite.isPending} onClick={() => invite.mutate()}>邀请到已有空间</button>}
-        </section>
+        {!isSelf && (
+          <section className="participant-picker profile-invite">
+            <h2>邀请加入空间</h2>
+            {inviteReason && <InlineState title="当前环境不可邀请" detail={inviteReason} />}
+            {!inviteReason && participant.relationship !== "connected" && <InlineState title="请先建立联系" detail="建立联系后，才能邀请参与者进入已有协作空间。" />}
+            {canInvite && !spacesQuery.isLoading && !inviteSpaces.length && <p className="muted">没有可邀请的协作空间。</p>}
+            {canInvite && inviteSpaces.map((space) => {
+              const selected = inviteSpaceId === space.id;
+              return (
+                <label key={space.id} className={clsx("picker-row", selected && "selected")}>
+                  <input type="radio" name="inviteSpace" value={space.id} checked={selected} onChange={() => setInviteSpaceId(space.id)} />
+                  <span><strong>{space.title}</strong><small>{space.kind === "direct" ? "一对一协作空间" : `${space.participantIds.length} 位参与者`}</small></span>
+                </label>
+              );
+            })}
+            {canInvite && <button className="quiet-button" disabled={!inviteSpaceId || invite.isPending} onClick={() => invite.mutate()}>邀请到已有空间</button>}
+          </section>
+        )}
         {request.error && <p className="form-error">{(request.error as Error).message}</p>}
         {invite.error && <p className="form-error">{(invite.error as Error).message}</p>}
       </div>

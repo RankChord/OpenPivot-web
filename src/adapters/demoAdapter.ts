@@ -85,7 +85,7 @@ export class DemoAdapter implements OpenPivotAdapter {
 
   async acceptFriendRequest(id: number): Promise<FriendRequest> {
     const request = this.requests.find((item) => item.id === id);
-    if (!request) throw new Error("未找到好友申请");
+    if (!request) throw new Error("未找到联系请求");
     request.status = "accepted";
     this.friends.push({ id: request.requester_id, username: `user${request.requester_id}`, nickname: `用户 ${request.requester_id}` });
     return request;
@@ -93,7 +93,7 @@ export class DemoAdapter implements OpenPivotAdapter {
 
   async rejectFriendRequest(id: number): Promise<FriendRequest> {
     const request = this.requests.find((item) => item.id === id);
-    if (!request) throw new Error("未找到好友申请");
+    if (!request) throw new Error("未找到联系请求");
     request.status = "rejected";
     return request;
   }

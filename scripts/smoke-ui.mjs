@@ -91,7 +91,7 @@ const { QueryClient, QueryClientProvider } = nodeRequire("@tanstack/react-query"
 const { MemoryRouter } = nodeRequire("react-router-dom");
 const { cleanup, fireEvent, render, screen, waitFor } = nodeRequire("@testing-library/react");
 
-const { NewMenu } = loadTsModule("src/app/AppShell.tsx");
+const { CommandPanel, NewMenu } = loadTsModule("src/app/AppShell.tsx");
 const { default: AppRouter } = loadTsModule("src/app/AppRouter.tsx");
 const { CreateFlowPage, FlowsOverviewPage } = loadTsModule("src/features/flows/FlowPages.tsx");
 const { SpacesPage } = loadTsModule("src/features/spaces/SpacePages.tsx");
@@ -141,7 +141,8 @@ function renderWithProviders(element, options = {}) {
 
 const connectedWorkspace = {
   listFlows: async () => [],
-  listSpaces: async () => []
+  listSpaces: async () => [],
+  searchParticipants: async () => []
 };
 
 let view = renderWithProviders(
@@ -153,6 +154,18 @@ let view = renderWithProviders(
 const disabledCreateSpace = screen.getByRole("button", { name: "新建协作空间" });
 assert(disabledCreateSpace.disabled, "Connected new menu must disable unsupported group space creation");
 assert(!document.querySelector('a[href="/spaces/new"]'), "Connected new menu must not expose /spaces/new as a clickable link");
+assert(!document.body.textContent?.includes("与参与者开始对话"), "New menu must not promise a direct conversation action");
+assert(document.body.textContent?.includes("查找参与者"), "New menu should route users to participant discovery");
+view.dispose();
+
+view = renderWithProviders(
+  React.createElement(CommandPanel, {
+    app: createApp({ capabilities: rustCapabilities, mode: "connected", workspace: connectedWorkspace }),
+    onClose: () => undefined
+  })
+);
+const commandInput = document.querySelector(".command-input input");
+assert(commandInput?.getAttribute("placeholder") === "搜索协作空间、参与者、协作流程或设置", "Command search placeholder must only advertise supported domains");
 view.dispose();
 
 view = renderWithProviders(
@@ -207,6 +220,16 @@ view = renderWithProviders(
 );
 await screen.findByText("真实后端暂未接入流程");
 assert(!document.querySelector('a[href="/flows/new"]'), "Connected flow overview must not expose unsupported global flow creation");
+view.dispose();
+
+resetDemoWorkspace();
+localStorage.setItem("openpivot.web.mode", "demo");
+localStorage.setItem("openpivot.web.theme", "light");
+view = renderWithProviders(React.createElement(AppRouter), { initialEntries: ["/participants/me"] });
+const selfDirectButton = await screen.findByRole("button", { name: "开始一对一协作空间" });
+const selfProfile = document.querySelector(".profile-static");
+assert(selfDirectButton.disabled, "Participant self profile must not allow direct space creation");
+assert(!selfProfile?.textContent?.includes("建立联系"), "Participant self profile must not offer a contact request");
 view.dispose();
 
 function clickHref(href) {
@@ -273,8 +296,11 @@ console.log(JSON.stringify({
   ok: true,
   checks: [
     "connected-new-menu-gates-group-space",
+    "new-menu-uses-participant-discovery-language",
+    "command-search-only-advertises-supported-domains",
     "connected-spaces-empty-state-guides-to-participants",
     "demo-create-flow-requires-space",
+    "participant-self-profile-disables-direct-space",
     "demo-app-inbox-space-send-participants-flow-approval",
     "demo-failed-message-retry",
     "connected-flows-hide-unsupported-create"

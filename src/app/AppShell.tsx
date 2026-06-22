@@ -147,7 +147,7 @@ export function NewMenu({ app, onClose }: { app: AppContextValue; onClose: () =>
       {groupReason ? <button className="new-menu-action" disabled title={groupReason}>
         新建协作空间
       </button> : <Link to="/spaces/new" onClick={onClose}>新建协作空间</Link>}
-      <Link to="/participants" onClick={onClose}>与参与者开始对话</Link>
+      <Link to="/participants" onClick={onClose}>查找参与者</Link>
       <Link to="/participants" onClick={onClose}>建立联系</Link>
       {flowReason ? <button className="new-menu-action" disabled title={flowReason}>
         新建协作流程
@@ -194,7 +194,7 @@ export function CommandPanel({ app, onClose }: { app: AppContextValue; onClose: 
       <div className="command-panel">
         <div className="command-input">
           <Search size={16} />
-          <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索协作空间、参与者、消息、协作流程或设置" />
+          <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索协作空间、参与者、协作流程或设置" />
           <button onClick={onClose} aria-label="关闭"><X size={16} /></button>
         </div>
         <div className="command-results">

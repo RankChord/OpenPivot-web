@@ -392,6 +392,7 @@ export class DemoWorkspaceAdapter implements WorkspaceAdapter {
   }
 
   async createDirectSpace(participantId: string): Promise<CollaborationSpace> {
+    if (participantId === "me") throw new Error("不能和当前身份创建一对一协作空间");
     const existing = store.spaces.find((space) => space.kind === "direct" && space.participantIds.includes(participantId));
     if (existing) return wait(existing);
     const participant = store.participants.find((item) => item.id === participantId);

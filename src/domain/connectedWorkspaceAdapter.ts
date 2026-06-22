@@ -147,6 +147,7 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
   async createDirectSpace(participantId: string): Promise<CollaborationSpace> {
     const sourceId = Number(participantId.replace("user-", ""));
     if (!Number.isFinite(sourceId) || sourceId <= 0) throw new Error("参与者缺少真实后端 ID");
+    if (sourceId === this.currentUserId) throw new Error("不能和当前身份创建一对一协作空间");
     const conversation = await this.rust.createDirectConversation(sourceId);
     const friends = await this.friendList();
     return conversationToSpace(conversation, this.currentUserId, friends);

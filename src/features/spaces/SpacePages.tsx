@@ -23,7 +23,7 @@ export function SpacesPage({ app }: { app: AppContextValue }) {
   const spaces = spacesQuery.data || [];
   const groupReason = unavailableReason("groupSpaces", app.environment.capabilities);
   const createAction = groupReason
-    ? <Link className="quiet-button" to="/participants">与参与者开始对话</Link>
+    ? <Link className="quiet-button" to="/participants">查找参与者</Link>
     : <Link className="quiet-button" to="/spaces/new"><Plus size={16} />新建</Link>;
   const emptyAction = groupReason
     ? <Link className="primary-button" to="/participants">查找参与者</Link>
