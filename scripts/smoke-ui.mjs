@@ -331,6 +331,12 @@ view = renderWithProviders(
       path: "/spaces/:spaceId/flows/:flowId",
       element: React.createElement(FlowDetailPage, {
         app: createApp({ capabilities: demoCapabilities, mode: "demo", workspace: {
+          getSpace: async (spaceId) => ({
+            id: spaceId,
+            kind: "multi",
+            participantIds: ["me", "lin"],
+            title: "发布协作室"
+          }),
           getFlow: async (spaceId, flowId) => {
             assert(spaceId === "release" && flowId === "approval-flow", "Flow detail must request the route-bound flow");
             return approvalFlow;
@@ -367,6 +373,12 @@ view = renderWithProviders(
       path: "/spaces/:spaceId/flows/:flowId",
       element: React.createElement(FlowDetailPage, {
         app: createApp({ capabilities: demoCapabilities, mode: "demo", workspace: {
+          getSpace: async (spaceId) => ({
+            id: spaceId,
+            kind: "multi",
+            participantIds: ["me", "lin"],
+            title: "发布协作室"
+          }),
           getFlow: async () => approvalFlow,
           listInboxItems: async () => [],
           completeInboxItem: async () => {
@@ -381,6 +393,33 @@ view = renderWithProviders(
 const missingApprovalButton = await screen.findByRole("button", { name: "批准并继续" });
 assert(missingApprovalButton.disabled, "Flow approval button must be disabled without a matching inbox item");
 assert(missingApprovalButton.getAttribute("title")?.includes("当前收件箱没有匹配"), "Disabled flow approval must explain the missing inbox item");
+view.dispose();
+
+let missingSpaceFlowDetailLoaded = false;
+view = renderWithProviders(
+  React.createElement(Routes, null,
+    React.createElement(Route, {
+      path: "/spaces/:spaceId/flows/:flowId",
+      element: React.createElement(FlowDetailPage, {
+        app: createApp({ capabilities: demoCapabilities, mode: "demo", workspace: {
+          getSpace: async () => null,
+          getFlow: async () => {
+            missingSpaceFlowDetailLoaded = true;
+            return null;
+          },
+          listInboxItems: async () => {
+            missingSpaceFlowDetailLoaded = true;
+            return [];
+          }
+        } })
+      })
+    })
+  ),
+  { initialEntries: ["/spaces/missing/flows/approval-flow"] }
+);
+await screen.findByText("没有找到协作空间");
+assert(document.querySelector('a[href="/spaces"]'), "Missing space flow detail routes must link back to the space list");
+assert(!missingSpaceFlowDetailLoaded, "Missing space flow detail routes must not load flow or inbox context");
 view.dispose();
 
 resetDemoWorkspace();
@@ -524,6 +563,7 @@ console.log(JSON.stringify({
     "create-space-requires-connected-participants",
     "space-flow-create-binds-current-space",
     "flow-detail-approval-requires-matching-inbox-item",
+    "flow-detail-requires-real-space-context",
     "participant-self-profile-disables-direct-space",
     "legacy-unknown-chat-returns-to-inbox",
     "missing-space-timeline-does-not-load-messages",

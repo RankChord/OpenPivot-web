@@ -46,21 +46,27 @@ export function FlowList({ flows }: { flows: CollaborationFlow[] }) {
 export function FlowDetailPage({ app }: { app: AppContextValue }) {
   const { spaceId = "", flowId = "" } = useParams();
   const queryClient = useQueryClient();
+  const spaceQuery = useQuery({
+    queryKey: ["workspace", app.mode, app.session, "space", spaceId],
+    queryFn: () => app.workspace!.getSpace(spaceId),
+    enabled: !!app.workspace && !!spaceId
+  });
+  const space = spaceQuery.data;
   const flowQuery = useQuery({
-    queryKey: ["workspace", app.mode, app.session, app.workspaceVersion, "flow", spaceId, flowId],
-    queryFn: () => app.workspace!.getFlow(spaceId, flowId),
-    enabled: !!app.workspace && !!spaceId && !!flowId
+    queryKey: ["workspace", app.mode, app.session, app.workspaceVersion, "flow", space?.id || spaceId, flowId],
+    queryFn: () => app.workspace!.getFlow(space!.id, flowId),
+    enabled: !!app.workspace && !!space && !!flowId
   });
   const inboxQuery = useQuery({
     queryKey: ["workspace", app.mode, app.session, "inbox"],
     queryFn: () => app.workspace!.listInboxItems(),
-    enabled: !!app.workspace && !!spaceId && !!flowId
+    enabled: !!app.workspace && !!space && !!flowId
   });
   const complete = useMutation({
     mutationFn: (item: InboxItem) => app.workspace!.completeInboxItem(item.id, "approve"),
     onSuccess: async (_result, item) => {
       queryClient.setQueryData<CollaborationFlow | null>(
-        ["workspace", app.mode, app.session, app.workspaceVersion, "flow", spaceId, flowId],
+        ["workspace", app.mode, app.session, app.workspaceVersion, "flow", space?.id || spaceId, flowId],
         (flow) => applyInboxApprovalToFlowCache(flow, item.stepId!, "approve")
       );
       app.refreshWorkspace();
@@ -68,15 +74,16 @@ export function FlowDetailPage({ app }: { app: AppContextValue }) {
     }
   });
   const flow = flowQuery.data;
-  if (flowQuery.isLoading) return <InlinePage title="正在打开协作流程" />;
-  if (!flow) return <InlinePage title="没有找到协作流程" detail="真实后端暂未接入流程，或该流程不存在。" action={<Link className="primary-button" to={`/spaces/${spaceId}/flows`}>返回流程列表</Link>} />;
+  if (spaceQuery.isLoading || flowQuery.isLoading) return <InlinePage title="正在打开协作流程" />;
+  if (!space) return <InlinePage title="没有找到协作空间" detail="协作流程详情必须属于一个真实协作空间。" action={<Link className="primary-button" to="/spaces">返回空间列表</Link>} />;
+  if (!flow) return <InlinePage title="没有找到协作流程" detail="真实后端暂未接入流程，或该流程不存在。" action={<Link className="primary-button" to={`/spaces/${space.id}/flows`}>返回流程列表</Link>} />;
   const waiting = flow.steps.find((step) => step.id === flow.waitingStepId && step.status === "waiting");
-  const approvalItem = (inboxQuery.data || []).find((item) => item.kind === "approval" && item.status === "open" && item.spaceId === spaceId && item.flowId === flow.id && item.stepId === waiting?.id);
+  const approvalItem = (inboxQuery.data || []).find((item) => item.kind === "approval" && item.status === "open" && item.spaceId === space.id && item.flowId === flow.id && item.stepId === waiting?.id);
   const approvalReason = unavailableReason("approvals", app.environment.capabilities) || "当前收件箱没有匹配此流程步骤的审批事项。";
   return (
     <section className="center-page page-fade">
       <div className="main-column">
-        <PageTitle title={flow.title} subtitle="默认以流程脚本表达发生什么、请求谁、等待什么。" action={<Link className="quiet-button" to={`/spaces/${spaceId}`}>回到空间</Link>} />
+        <PageTitle title={flow.title} subtitle="默认以流程脚本表达发生什么、请求谁、等待什么。" action={<Link className="quiet-button" to={`/spaces/${space.id}`}>回到空间</Link>} />
         <article className="flow-script">
           <header>
             <span>当</span>
