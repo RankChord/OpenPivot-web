@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 64" role="img" aria-labelledby="title">
+  <title id="title">OpenPivot logo lockup</title>
+  <rect x="0" y="8" width="48" height="48" rx="12" fill="#101820"/>
+  <circle cx="19" cy="32" r="10" fill="none" stroke="#E8FFF8" stroke-width="4"/>
+  <path d="M25 22h8c6 0 10 4 10 10s-4 10-10 10h-8V22Z" fill="none" stroke="#7DE0C6" stroke-width="4" stroke-linejoin="round"/>
+  <circle cx="25" cy="32" r="3" fill="#7DE0C6"/>
+  <text x="62" y="39" fill="#17212B" font-family="Inter, Segoe UI, sans-serif" font-size="25" font-weight="700">OpenPivot</text>
+</svg>

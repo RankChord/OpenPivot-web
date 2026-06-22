@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title">
+  <title id="title">OpenPivot app icon</title>
+  <rect width="96" height="96" rx="24" fill="#101820"/>
+  <path d="M21 48c0-15 11-27 27-27s27 12 27 27-11 27-27 27-27-12-27-27Z" fill="#15232E"/>
+  <circle cx="39" cy="48" r="18" fill="none" stroke="#F1FFF9" stroke-width="7"/>
+  <path d="M50 30h12c10 0 17 8 17 18s-7 18-17 18H50V30Z" fill="none" stroke="#7DE0C6" stroke-width="7" stroke-linejoin="round"/>
+  <circle cx="50" cy="48" r="5" fill="#7DE0C6"/>
+</svg>
