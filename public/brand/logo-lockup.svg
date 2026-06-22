@@ -1,0 +1,8 @@
+<svg width="224" height="48" viewBox="0 0 224 48" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="OpenPivot">
+  <rect x="2" y="4" width="40" height="40" rx="14" fill="#F4F3F1"/>
+  <rect x="2.5" y="4.5" width="39" height="39" rx="13.5" stroke="#141414" stroke-opacity=".08"/>
+  <path d="M12.5 26.5C17.3 17.8 24.4 13.9 33.5 14.5C32 23.9 26 31.8 16.7 35.1L15.3 30.2L12.5 26.5Z" fill="#171717"/>
+  <path d="M20 28.7C25.4 27.5 29.7 23.6 31.8 18" stroke="#F4F3F1" stroke-width="2.8" stroke-linecap="round"/>
+  <circle cx="34" cy="15" r="3.8" fill="#C44735"/>
+  <text x="54" y="29" fill="#171717" font-family="Inter, Geist, PingFang SC, Microsoft YaHei, system-ui, sans-serif" font-size="22" font-weight="720">OpenPivot</text>
+</svg>
