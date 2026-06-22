@@ -19,13 +19,14 @@ import { ParticipantsPage, ParticipantDetailPage } from "../features/participant
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { AuthPage, AuthRequired, BootingPage } from "../features/auth/AuthPages";
 import { restoreConnectedSession } from "./sessionBootstrap";
+import { normalizeApiBaseUrl } from "./AppContext";
 
 const tokenStore = new LocalRefreshTokenStore();
 function App() {
   const queryClient = useQueryClient();
   const [mode, setModeState] = useState<ProductMode>(() => (localStorage.getItem("openpivot.web.mode") as ProductMode) || "demo");
   const [theme, setTheme] = useState<ThemeMode>(() => (localStorage.getItem("openpivot.web.theme") as ThemeMode) || "light");
-  const [apiBaseUrl, setApiBaseUrl] = useState(() => localStorage.getItem("openpivot.web.apiBaseUrl") || defaultApiBaseUrl());
+  const [apiBaseUrl, setApiBaseUrlState] = useState(() => normalizeApiBaseUrl(localStorage.getItem("openpivot.web.apiBaseUrl") || defaultApiBaseUrl()));
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [session, setSession] = useState<SessionState>(() => mode === "demo"
     ? { status: "authenticated", userId: "me", username: "Ling" }
@@ -89,6 +90,18 @@ function App() {
     setModeState(nextMode);
     setSession(nextMode === "demo" ? { status: "authenticated", userId: "me", username: "Ling" } : { status: "booting" });
   }, [mode, queryClient]);
+
+  const setApiBaseUrl = useCallback((nextUrl: string) => {
+    const normalized = normalizeApiBaseUrl(nextUrl);
+    if (normalized === apiBaseUrl) return;
+    queryClient.clear();
+    setWorkspaceVersion((current) => current + 1);
+    setApiBaseUrlState(normalized);
+    if (mode === "connected") {
+      setAccessToken(null);
+      setSession({ status: "booting" });
+    }
+  }, [apiBaseUrl, mode, queryClient]);
 
   const refreshWorkspace = useCallback(() => {
     setWorkspaceVersion((current) => current + 1);

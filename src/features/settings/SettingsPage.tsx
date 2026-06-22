@@ -2,9 +2,13 @@ import clsx from "clsx";
 import { LogOut } from "lucide-react";
 import { useState } from "react";
 import type { AppContextValue } from "../../app/AppContext";
+import { normalizeApiBaseUrl } from "../../app/AppContext";
 import { PageTitle } from "../../components/feedback/Feedback";
 export function SettingsPage({ app }: { app: AppContextValue }) {
   const [apiUrl, setApiUrl] = useState(app.apiBaseUrl);
+  const normalizedApiUrl = normalizeApiBaseUrl(apiUrl);
+  const apiUrlChanged = normalizedApiUrl !== app.apiBaseUrl;
+  const canLogout = app.mode === "connected" && app.session.status === "authenticated";
   return (
     <section className="center-page page-fade">
       <div className="main-column narrow">
@@ -21,7 +25,7 @@ export function SettingsPage({ app }: { app: AppContextValue }) {
             <h2>Rust 后端地址</h2>
             <div className="inline-field">
               <input value={apiUrl} onChange={(event) => setApiUrl(event.target.value)} placeholder="同源 /v1 代理" />
-              <button onClick={() => app.setApiBaseUrl(apiUrl)}>保存</button>
+              <button disabled={!apiUrlChanged} onClick={() => app.setApiBaseUrl(normalizedApiUrl)}>{apiUrlChanged ? "保存" : "已保存"}</button>
             </div>
           </section>
           <section>
@@ -33,9 +37,9 @@ export function SettingsPage({ app }: { app: AppContextValue }) {
           </section>
           <section>
             <h2>会话</h2>
-            <button className="danger-button" onClick={() => void app.logout()}>
+            <button className="danger-button" disabled={!canLogout} title={canLogout ? undefined : app.mode === "demo" ? "演示数据没有真实登录会话" : "当前没有已登录会话"} onClick={() => void app.logout()}>
               <LogOut size={16} />
-              退出登录
+              {canLogout ? "退出登录" : "无需退出"}
             </button>
           </section>
         </div>

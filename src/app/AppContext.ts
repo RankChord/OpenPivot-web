@@ -32,6 +32,10 @@ export function invalidateWorkspaceQueries(queryClient: QueryClient, mode: Produ
   return queryClient.invalidateQueries({ queryKey: ["workspace", mode], refetchType: "all" });
 }
 
+export function normalizeApiBaseUrl(url: string) {
+  return url.trim().replace(/\/+$/, "");
+}
+
 export function applyInboxApprovalToFlowCache(flow: CollaborationFlow | null | undefined, stepId: string, action: "approve" | "reject" | "dismiss") {
   if (!flow) return flow;
   const steps = flow.steps.map((step) => ({ ...step }));

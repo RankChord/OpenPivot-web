@@ -97,6 +97,7 @@ const { cleanup, fireEvent, render, screen, waitFor } = nodeRequire("@testing-li
 const { CommandPanel, NewMenu } = loadTsModule("src/app/AppShell.tsx");
 const { default: AppRouter } = loadTsModule("src/app/AppRouter.tsx");
 const { FlowsOverviewPage } = loadTsModule("src/features/flows/FlowPages.tsx");
+const { SettingsPage } = loadTsModule("src/features/settings/SettingsPage.tsx");
 const { SpacesPage, SpaceFlowsPage } = loadTsModule("src/features/spaces/SpacePages.tsx");
 const { demoCapabilities, rustCapabilities } = loadTsModule("src/domain/capabilities.ts");
 const { DemoWorkspaceAdapter, resetDemoWorkspace } = loadTsModule("src/domain/demoWorkspaceAdapter.ts");
@@ -179,6 +180,35 @@ view = renderWithProviders(
 );
 const commandInput = document.querySelector(".command-input input");
 assert(commandInput?.getAttribute("placeholder") === "搜索协作空间、参与者、协作流程或设置", "Command search placeholder must only advertise supported domains");
+view.dispose();
+
+let savedApiBaseUrl = "";
+view = renderWithProviders(
+  React.createElement(SettingsPage, {
+    app: {
+      ...createApp({ capabilities: rustCapabilities, mode: "connected", workspace: connectedWorkspace }),
+      apiBaseUrl: "http://old.example/v1",
+      setApiBaseUrl: (url) => {
+        savedApiBaseUrl = url;
+      }
+    }
+  })
+);
+assert(screen.getByRole("button", { name: "已保存" }).disabled, "Settings API save must be disabled when the address is unchanged");
+fireEvent.change(screen.getByDisplayValue("http://old.example/v1"), { target: { value: "  http://new.example/v1///  " } });
+const saveApiButton = screen.getByRole("button", { name: "保存" });
+assert(!saveApiButton.disabled, "Settings API save must enable only after the address changes");
+fireEvent.click(saveApiButton);
+assert(savedApiBaseUrl === "http://new.example/v1", "Settings API save must pass a normalized backend address");
+view.dispose();
+
+view = renderWithProviders(
+  React.createElement(SettingsPage, {
+    app: createApp({ capabilities: demoCapabilities, mode: "demo", workspace: connectedWorkspace })
+  })
+);
+const demoLogoutButton = screen.getByRole("button", { name: "无需退出" });
+assert(demoLogoutButton.disabled, "Demo mode must not expose a fake logout action");
 view.dispose();
 
 view = renderWithProviders(
@@ -344,6 +374,8 @@ console.log(JSON.stringify({
     "new-menu-uses-participant-discovery-language",
     "new-menu-routes-flow-creation-through-spaces",
     "command-search-only-advertises-supported-domains",
+    "settings-api-save-is-stateful",
+    "demo-settings-hides-fake-logout",
     "connected-spaces-empty-state-guides-to-participants",
     "space-flow-create-binds-current-space",
     "participant-self-profile-disables-direct-space",
