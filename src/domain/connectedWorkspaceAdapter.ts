@@ -161,7 +161,21 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
     const sourceId = Number(participantId.replace("user-", ""));
     if (!Number.isFinite(sourceId) || sourceId <= 0) throw new Error("参与者缺少真实后端 ID");
     const request = await this.rust.createFriendRequest({ userId: sourceId, message });
-    return requestToContactRequest(request);
+    return {
+      id: String(request.id),
+      sourceId: request.id,
+      participant: {
+        id: `user-${sourceId}`,
+        sourceId,
+        kind: "unknown",
+        displayName: `用户 ${sourceId}`,
+        title: "联系请求已发送",
+        relationship: "pending_outbound",
+        description: "来自真实后端的参与者。"
+      },
+      message: request.message,
+      status: request.status as ContactRequest["status"]
+    };
   }
 
   async acceptContactRequest(requestId: string): Promise<ContactRequest> {

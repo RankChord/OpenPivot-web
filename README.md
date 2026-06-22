@@ -168,11 +168,18 @@ npm run test
 npm run test:smoke
 ```
 
+Connected Mode 的 HTTP 协议链路可以用本地 mock 后端验证：
+
+```bash
+npm run test:connected
+```
+
 当前测试重点覆盖：
 
 - Rust HTTP Adapter 的请求封装、刷新令牌和重试逻辑
 - Session Bootstrap 的 Refresh Token 恢复和失败匿名状态
 - 工作区领域模型在 Demo 与 Connected 模式下的数据映射
+- Connected Mode 的登录恢复、参与者搜索、联系请求、收件箱处理、一对一空间和消息收发协议链路
 - Demo 消息发送、联系请求和流程审批状态联动
 - 全局创建流程必须选择所属协作空间
 - 邀请参与者加入已有协作空间会更新空间成员和时间线
