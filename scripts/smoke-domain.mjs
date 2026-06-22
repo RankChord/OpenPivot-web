@@ -54,6 +54,20 @@ const demo = new DemoWorkspaceAdapter();
 const flow = await demo.createFlow({ spaceId: "release", title: "release-flow-smoke" });
 assert(flow.spaceId === "release", "Demo flow must bind to the selected space");
 assert(flow.status === "draft", "Demo flow must be created as a draft");
+let missingSpaceFlowRejected = false;
+try {
+  await demo.createFlowFromMessage("missing-space", "missing-message");
+} catch {
+  missingSpaceFlowRejected = true;
+}
+assert(missingSpaceFlowRejected, "Demo flow creation from a message must reject missing spaces");
+let missingMessageFlowRejected = false;
+try {
+  await demo.createFlowFromMessage("release", "missing-message");
+} catch {
+  missingMessageFlowRejected = true;
+}
+assert(missingMessageFlowRejected, "Demo flow creation from a message must reject missing trigger messages");
 let selfDirectRejected = false;
 try {
   await demo.createDirectSpace("me");

@@ -586,6 +586,10 @@ export class DemoWorkspaceAdapter implements WorkspaceAdapter {
   }
 
   async createFlowFromMessage(spaceId: string, messageId: string): Promise<CollaborationFlow> {
+    const space = store.spaces.find((item) => item.id === spaceId);
+    if (!space) throw new Error("没有找到协作空间");
+    const message = (store.messages[spaceId] || []).find((item) => item.id === messageId);
+    if (!message) throw new Error("没有找到触发消息");
     const flow: CollaborationFlow = {
       id: `draft-${Date.now()}`,
       spaceId,
@@ -599,7 +603,7 @@ export class DemoWorkspaceAdapter implements WorkspaceAdapter {
       ]
     };
     store.flows.push(flow);
-    store.spaces.find((space) => space.id === spaceId)!.hasActiveFlow = true;
+    space.hasActiveFlow = true;
     store.messages[spaceId] = [
       ...(store.messages[spaceId] || []),
       flowEvent(`flow-created-${Date.now()}`, spaceId, "已基于此消息创建协作流程草稿。", flow.id)

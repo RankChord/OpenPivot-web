@@ -257,6 +257,15 @@ const spaceFlowWorkspace = {
     title: input.title || "UI smoke flow",
     trigger: "UI smoke trigger"
   }),
+  getSpace: async (spaceId) => {
+    assert(spaceId === "release", "Space flow page must verify the owning space");
+    return {
+      id: "release",
+      kind: "multi",
+      participantIds: ["me", "lin"],
+      title: "发布协作室"
+    };
+  },
   listSpaces: async () => [
     {
       id: "release",
@@ -343,6 +352,22 @@ view.dispose();
 resetDemoWorkspace();
 localStorage.setItem("openpivot.web.mode", "demo");
 localStorage.setItem("openpivot.web.theme", "light");
+view = renderWithProviders(React.createElement(AppRouter), { initialEntries: ["/spaces/missing/participants"] });
+await screen.findByText("没有找到协作空间");
+assert(document.querySelector('a[href="/spaces"]'), "Missing space participants routes must link back to the space list");
+view.dispose();
+
+resetDemoWorkspace();
+localStorage.setItem("openpivot.web.mode", "demo");
+localStorage.setItem("openpivot.web.theme", "light");
+view = renderWithProviders(React.createElement(AppRouter), { initialEntries: ["/spaces/missing/flows"] });
+await screen.findByText("没有找到协作空间");
+assert(!Array.from(document.querySelectorAll("button")).some((button) => button.textContent?.trim() === "新建流程草稿"), "Missing space flow routes must not expose flow creation");
+view.dispose();
+
+resetDemoWorkspace();
+localStorage.setItem("openpivot.web.mode", "demo");
+localStorage.setItem("openpivot.web.theme", "light");
 view = renderWithProviders(React.createElement(AppRouter), { initialEntries: ["/inbox"] });
 
 await screen.findByText("陈默等待你确认协议变更");
@@ -405,6 +430,7 @@ console.log(JSON.stringify({
     "space-flow-create-binds-current-space",
     "participant-self-profile-disables-direct-space",
     "legacy-unknown-chat-returns-to-inbox",
+    "missing-space-subroutes-stop-false-context",
     "inbox-message-context-links-have-anchors",
     "inbox-message-context-scrolls-after-load",
     "inbox-contact-request-links-to-participant",
