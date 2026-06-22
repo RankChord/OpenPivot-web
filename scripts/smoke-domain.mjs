@@ -38,7 +38,7 @@ assert(!appShellSource.includes("disabled-link"), "Unsupported create-space acti
 assert(appShellSource.includes('groupReason ? <button className="new-menu-action" disabled'), "New menu must render unsupported group space creation as a disabled button");
 assert(spacesPageSource.includes('groupReason\n    ? <Link className="quiet-button" to="/participants">查找参与者</Link>'), "Spaces page must guide unsupported group creation to participant discovery");
 assert(!spacesPageSource.includes("与参与者开始对话"), "Spaces page must not promise direct conversation creation from the global list");
-assert(!fs.readFileSync("src/adapters/demoAdapter.ts", "utf8").includes("好友申请"), "Legacy demo adapter must use contact request language");
+assert(!fs.existsSync("src/adapters/demoAdapter.ts"), "Legacy demo adapter must be removed after the workspace model migration");
 assert(appRouterSource.includes("const setApiBaseUrl = useCallback"), "API base URL save must be handled as app state, not a raw setter");
 assert(appRouterSource.includes("queryClient.clear();\n    setWorkspaceVersion"), "API base URL changes must clear workspace query cache");
 assert(appRouterSource.includes('if (mode === "connected")') && appRouterSource.includes('setSession({ status: "booting" })'), "Connected API base URL changes must re-enter session bootstrap");

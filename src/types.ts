@@ -1,18 +1,5 @@
 export type ProductMode = "connected" | "demo";
 
-export type ActorKind = "human" | "agent" | "unknown";
-
-export type ActorRole = "owner" | "admin" | "member";
-
-export interface Actor {
-  id: string;
-  kind: ActorKind;
-  displayName: string;
-  handle?: string;
-  role?: ActorRole;
-  description?: string;
-}
-
 export interface AuthTokens {
   accessToken: string;
   refreshToken: string;
@@ -46,22 +33,6 @@ export interface Message {
   sender_id: number;
   content: string;
   created_at: string;
-}
-
-export interface DemoMessage {
-  id: string;
-  actorId: string;
-  content: string;
-  createdAt: string;
-  replyToId?: string;
-  reaction?: string;
-}
-
-export interface DemoConversation {
-  id: string;
-  title: string;
-  actorIds: string[];
-  messages: DemoMessage[];
 }
 
 export interface OpenPivotAdapter {

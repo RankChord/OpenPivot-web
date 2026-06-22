@@ -226,8 +226,6 @@ npm run test:ui
 │   │   ├── feedback/
 │   │   ├── message/
 │   │   └── Composer.test.tsx
-│   ├── data/
-│   │   └── demo.ts
 │   ├── domain/
 │   │   ├── capabilities.ts
 │   │   ├── connectedWorkspaceAdapter.ts
