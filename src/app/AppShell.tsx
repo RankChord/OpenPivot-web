@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import clsx from "clsx";
 import { Bell, Command, Inbox, MessageCircle, Moon, Plus, Search, Settings, Sun, Users, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
@@ -145,9 +144,9 @@ export function NewMenu({ app, onClose }: { app: AppContextValue; onClose: () =>
   const flowReason = unavailableReason("collaborationFlows", app.environment.capabilities);
   return (
     <div className="new-menu">
-      <Link to="/spaces/new" onClick={onClose} className={clsx(groupReason && "disabled-link")} aria-disabled={!!groupReason} title={groupReason || undefined}>
+      {groupReason ? <button className="new-menu-action" disabled title={groupReason}>
         新建协作空间
-      </Link>
+      </button> : <Link to="/spaces/new" onClick={onClose}>新建协作空间</Link>}
       <Link to="/participants" onClick={onClose}>与参与者开始对话</Link>
       <Link to="/participants" onClick={onClose}>建立联系</Link>
       {flowReason ? <button className="new-menu-action" disabled title={flowReason}>

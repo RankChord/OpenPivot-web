@@ -266,7 +266,6 @@ textarea:focus-visible {
   background: var(--surface-hover);
 }
 
-.new-menu .disabled-link,
 .new-menu-action:disabled {
   opacity: 0.5;
   pointer-events: none;

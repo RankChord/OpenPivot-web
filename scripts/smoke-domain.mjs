@@ -31,6 +31,12 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+const appShellSource = fs.readFileSync("src/app/AppShell.tsx", "utf8");
+const spacesPageSource = fs.readFileSync("src/features/spaces/SpacePages.tsx", "utf8");
+assert(!appShellSource.includes("disabled-link"), "Unsupported create-space action must not be rendered as a disabled-looking link");
+assert(appShellSource.includes('groupReason ? <button className="new-menu-action" disabled'), "New menu must render unsupported group space creation as a disabled button");
+assert(spacesPageSource.includes('groupReason\n    ? <Link className="quiet-button" to="/participants">与参与者开始对话</Link>'), "Spaces page must guide unsupported group creation to participant-based direct collaboration");
+
 const demoMod = loadTsModule("src/domain/demoWorkspaceAdapter.ts");
 const connectedMod = loadTsModule("src/domain/connectedWorkspaceAdapter.ts");
 const { DemoWorkspaceAdapter, resetDemoWorkspace } = demoMod;

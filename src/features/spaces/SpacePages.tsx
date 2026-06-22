@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
+import { Plus } from "lucide-react";
+import { useState } from "react";
 import { Link, NavLink, useNavigate, useParams } from "react-router-dom";
 import type { AppContextValue } from "../../app/AppContext";
 import { invalidateWorkspaceQueries } from "../../app/AppContext";
@@ -19,12 +21,19 @@ export function SpacesPage({ app }: { app: AppContextValue }) {
     enabled: !!app.workspace
   });
   const spaces = spacesQuery.data || [];
+  const groupReason = unavailableReason("groupSpaces", app.environment.capabilities);
+  const createAction = groupReason
+    ? <Link className="quiet-button" to="/participants">与参与者开始对话</Link>
+    : <Link className="quiet-button" to="/spaces/new"><Plus size={16} />新建</Link>;
+  const emptyAction = groupReason
+    ? <Link className="primary-button" to="/participants">查找参与者</Link>
+    : <Link className="primary-button" to="/spaces/new">创建协作空间</Link>;
   return (
     <section className="center-page page-fade">
       <div className="main-column">
-        <PageTitle title="协作空间" subtitle="所有对话都发生在协作空间中，一对一只是成员更少的空间。" action={<Link className="quiet-button" to="/spaces/new"><Plus size={16} />新建</Link>} />
+        <PageTitle title="协作空间" subtitle="所有对话都发生在协作空间中，一对一只是成员更少的空间。" action={createAction} />
         {spacesQuery.isLoading && <InlineState title="正在读取协作空间" detail="从当前数据环境加载。" />}
-        {!spacesQuery.isLoading && !spaces.length && <EmptyState title="还没有协作空间" detail="创建第一个空间，选择参与者，然后发送第一条消息。" action={<Link className="primary-button" to="/spaces/new">创建协作空间</Link>} />}
+        {!spacesQuery.isLoading && !spaces.length && <EmptyState title="还没有协作空间" detail={groupReason ? "从参与者开始一对一协作，或在支持多人空间的环境创建空间。" : "创建第一个空间，选择参与者，然后发送第一条消息。"} action={emptyAction} />}
         <div className="conversation-list">
           {spaces.map((space) => (
             <Link key={space.id} className="conversation-home-row" to={`/spaces/${space.id}`}>
@@ -250,5 +259,3 @@ export function SpaceFlowsPage({ app }: { app: AppContextValue }) {
     </section>
   );
 }
-import { Plus } from "lucide-react";
-import { useState } from "react";
