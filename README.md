@@ -186,6 +186,7 @@ npm run test:ui
 - Session Bootstrap 的 Refresh Token 恢复和失败匿名状态
 - 工作区领域模型在 Demo 与 Connected 模式下的数据映射
 - Connected Mode 的登录恢复、参与者搜索、联系请求、收件箱处理、一对一空间和消息收发协议链路
+- Demo Mode 的 App 路由级核心旅程：收件箱、空间消息、参与者、从消息创建流程和审批处理
 - Demo 消息发送、联系请求和流程审批状态联动
 - 全局创建流程必须选择所属协作空间
 - Connected Mode 不支持的空间/流程入口不会渲染成可跳转假按钮

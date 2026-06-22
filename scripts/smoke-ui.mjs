@@ -11,6 +11,20 @@ const moduleCache = new Map();
 function loadTsModule(filePath) {
   const absolutePath = path.resolve(filePath);
   if (moduleCache.has(absolutePath)) return moduleCache.get(absolutePath).exports;
+  if (absolutePath.endsWith(path.normalize("src/config.ts"))) {
+    const module = {
+      exports: {
+        APP_COPY: {
+          connectedOnlyNotice: "真实后端模式只展示当前 Rust 后端已经实现的能力。",
+          demoLabel: "概念预览 · 演示数据",
+          previewOnly: "仅作预览 · 执行引擎未接入"
+        },
+        defaultApiBaseUrl: () => ""
+      }
+    };
+    moduleCache.set(absolutePath, module);
+    return module.exports;
+  }
 
   const source = fs.readFileSync(absolutePath, "utf8");
   const output = ts.transpileModule(source, {
@@ -27,7 +41,9 @@ function loadTsModule(filePath) {
   const sandbox = {
     clearTimeout,
     console,
+    document: globalThis.document,
     exports: module.exports,
+    localStorage: globalThis.localStorage,
     module,
     require: (id) => {
       if (id.startsWith(".")) {
@@ -39,7 +55,7 @@ function loadTsModule(filePath) {
       return nodeRequire(id);
     },
     setTimeout,
-    window: { setTimeout }
+    window: globalThis.window || { setTimeout }
   };
   vm.runInNewContext(output, sandbox, { filename: absolutePath });
   return module.exports;
@@ -76,6 +92,7 @@ const { MemoryRouter } = nodeRequire("react-router-dom");
 const { cleanup, fireEvent, render, screen, waitFor } = nodeRequire("@testing-library/react");
 
 const { NewMenu } = loadTsModule("src/app/AppShell.tsx");
+const { default: AppRouter } = loadTsModule("src/app/AppRouter.tsx");
 const { CreateFlowPage, FlowsOverviewPage } = loadTsModule("src/features/flows/FlowPages.tsx");
 const { SpacesPage } = loadTsModule("src/features/spaces/SpacePages.tsx");
 const { demoCapabilities, rustCapabilities } = loadTsModule("src/domain/capabilities.ts");
@@ -101,7 +118,7 @@ function createApp({ capabilities, mode, workspace }) {
   };
 }
 
-function renderWithProviders(element) {
+function renderWithProviders(element, options = {}) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -110,7 +127,7 @@ function renderWithProviders(element) {
   });
   const result = render(
     React.createElement(QueryClientProvider, { client: queryClient },
-      React.createElement(MemoryRouter, { future: { v7_relativeSplatPath: true, v7_startTransition: true } }, element)
+      React.createElement(MemoryRouter, { future: { v7_relativeSplatPath: true, v7_startTransition: true }, initialEntries: options.initialEntries }, element)
     )
   );
   return {
@@ -192,12 +209,54 @@ await screen.findByText("真实后端暂未接入流程");
 assert(!document.querySelector('a[href="/flows/new"]'), "Connected flow overview must not expose unsupported global flow creation");
 view.dispose();
 
+function clickHref(href) {
+  const link = document.querySelector(`a[href="${href}"]`);
+  assert(link, `Expected link ${href}`);
+  fireEvent.click(link);
+}
+
+function clickLastButtonByText(text) {
+  const buttons = Array.from(document.querySelectorAll("button")).filter((button) => button.textContent?.trim() === text && !button.disabled);
+  assert(buttons.length > 0, `Expected enabled button ${text}`);
+  fireEvent.click(buttons.at(-1));
+}
+
+resetDemoWorkspace();
+localStorage.setItem("openpivot.web.mode", "demo");
+localStorage.setItem("openpivot.web.theme", "light");
+view = renderWithProviders(React.createElement(AppRouter), { initialEntries: ["/inbox"] });
+
+await screen.findByText("陈默等待你确认协议变更");
+clickHref("/spaces/core");
+await screen.findByPlaceholderText("给 OpenPivot 核心开发 发送消息...");
+const messageText = `UI smoke message ${Date.now()}`;
+fireEvent.change(screen.getByPlaceholderText("给 OpenPivot 核心开发 发送消息..."), { target: { value: messageText } });
+fireEvent.click(screen.getByRole("button", { name: "发送" }));
+await screen.findByText(messageText);
+
+clickHref("/spaces/core/participants");
+await screen.findByText("产品负责人");
+clickHref("/spaces/core");
+await screen.findByText(messageText);
+clickLastButtonByText("基于此消息创建协作流程");
+await screen.findByText("基于消息的新流程");
+
+clickHref("/inbox");
+await screen.findByText("陈默等待你确认协议变更");
+fireEvent.click(screen.getByRole("button", { name: "批准" }));
+await waitFor(() => assert(!document.body.textContent?.includes("陈默等待你确认协议变更"), "Approval should leave the inbox after processing"));
+clickHref("/spaces/core");
+await screen.findByText("人工审批已通过，流程已写回协作空间。");
+view.dispose();
+
 console.log(JSON.stringify({
   ok: true,
   checks: [
     "connected-new-menu-gates-group-space",
     "connected-spaces-empty-state-guides-to-participants",
     "demo-create-flow-requires-space",
+    "demo-app-inbox-space-send-participants-flow-approval",
     "connected-flows-hide-unsupported-create"
   ]
 }, null, 2));
+process.exit(0);
