@@ -162,6 +162,12 @@ npm run preview
 npm run test
 ```
 
+当前沙箱如果阻止 Vitest/esbuild 读取工作区父目录，可以先运行不加载浏览器依赖的领域烟测：
+
+```bash
+npm run test:smoke
+```
+
 当前测试重点覆盖：
 
 - Rust HTTP Adapter 的请求封装、刷新令牌和重试逻辑
