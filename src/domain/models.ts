@@ -18,6 +18,7 @@ export interface Participant {
 
 export interface CollaborationSpace {
   id: string;
+  sourceSpaceId?: number;
   sourceConversationId?: number;
   kind: SpaceKind;
   title: string;
@@ -72,6 +73,7 @@ export interface FlowStep {
 }
 
 export interface CollaborationFlow {
+  sourceFlowId?: number;
   id: string;
   spaceId: string;
   title: string;
@@ -80,6 +82,18 @@ export interface CollaborationFlow {
   steps: FlowStep[];
   lastRunAt?: string;
   waitingStepId?: string;
+}
+
+export interface FlowRunStartResult {
+  runId: string;
+  taskId: string;
+  status: "waiting_action" | string;
+}
+
+export interface FlowTaskCompleteResult {
+  runId: string;
+  taskId: string;
+  status: "completed" | string;
 }
 
 export interface InboxItem {

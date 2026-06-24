@@ -3,50 +3,65 @@ import { demoCapabilities, rustCapabilities, unavailableReason } from "./capabil
 import { ConnectedWorkspaceAdapter } from "./connectedWorkspaceAdapter";
 import { DemoWorkspaceAdapter, resetDemoWorkspace } from "./demoWorkspaceAdapter";
 import type { RustHttpAdapter } from "../adapters/rustHttpAdapter";
-import type { Conversation, Message, UserSummary } from "../types";
+import type { FlowResponse, SpaceMemberResponse, SpaceProtocolMessage, SpaceResponse, UserSummary } from "../types";
 
 function connectedStub() {
-  const conversations: Conversation[] = [
-    { id: 7, conversation_type: "direct", user_low_id: 1, user_high_id: 2 }
+  const spaces: SpaceResponse[] = [
+    { id: 7, name: "Bob 协作空间", space_type: "group", owner_id: 1 }
+  ];
+  const members: SpaceMemberResponse[] = [
+    { id: 1, space_id: 7, user_id: 1, role: "owner" },
+    { id: 2, space_id: 7, user_id: 2, role: "member" }
   ];
   const friends: UserSummary[] = [
     { id: 2, username: "bob", nickname: "Bob" }
   ];
-  const messages: Message[] = [
-    { id: 11, conversation_id: 7, sender_id: 2, content: "hello", created_at: "2026-06-22T10:00:00Z" }
+  const messages: SpaceProtocolMessage[] = [
+    { id: 11, space_id: 7, sender_id: 2, content: "hello", created_at: "2026-06-22T10:00:00Z" }
   ];
+  const flows: FlowResponse[] = [];
   return {
-    listConversations: vi.fn(async () => conversations),
     listFriends: vi.fn(async () => friends),
-    listMessages: vi.fn(async () => messages),
-    sendMessage: vi.fn(async (conversationId: number, content: string) => ({
+    listSpaces: vi.fn(async () => spaces),
+    listSpaceMembers: vi.fn(async () => members),
+    listSpaceMessages: vi.fn(async () => messages),
+    createSpaceMessage: vi.fn(async (spaceId: number, content: string) => ({
       id: 12,
-      conversation_id: conversationId,
+      space_id: spaceId,
       sender_id: 1,
       content,
       created_at: "2026-06-22T10:01:00Z"
+    })),
+    listFlows: vi.fn(async () => flows),
+    createFlow: vi.fn(async (spaceId: number, input: { name: string; description?: string | null }) => ({
+      id: 31,
+      space_id: spaceId,
+      name: input.name,
+      description: input.description ?? null,
+      created_by: 1
     })),
     searchUsers: vi.fn(async () => friends),
     listFriendRequests: vi.fn(async () => []),
     createFriendRequest: vi.fn(),
     acceptFriendRequest: vi.fn(),
     rejectFriendRequest: vi.fn(),
-    createDirectConversation: vi.fn(async () => conversations[0])
+    createSpace: vi.fn(async ({ name }: { name: string }) => ({ id: 8, name, space_type: "group", owner_id: 1 })),
+    addSpaceMember: vi.fn(async (spaceId: number, userId: number) => ({ id: 3, space_id: spaceId, user_id: userId, role: "member" }))
   } as unknown as RustHttpAdapter;
 }
 
 describe("workspace domain model", () => {
   beforeEach(() => resetDemoWorkspace());
 
-  it("maps a backend direct conversation into a collaboration space", async () => {
+  it("maps a backend collaboration space into the workspace model", async () => {
     const adapter = new ConnectedWorkspaceAdapter(connectedStub(), 1);
     const spaces = await adapter.listSpaces();
 
     expect(spaces[0]).toMatchObject({
-      id: "conversation-7",
-      sourceConversationId: 7,
+      id: "space-7",
+      sourceSpaceId: 7,
       kind: "direct",
-      title: "与Bob的对话",
+      title: "Bob 协作空间",
       participantIds: ["user-1", "user-2"]
     });
   });
@@ -82,10 +97,14 @@ describe("workspace domain model", () => {
     expect((await connected.listSpaces()).some((space) => space.id === "core")).toBe(false);
   });
 
-  it("gates unsupported connected capabilities with clear reasons", () => {
+  it("enables backend-supported collaboration capabilities without enabling fake approvals", () => {
     expect(demoCapabilities.collaborationFlows).toBe(true);
-    expect(rustCapabilities.collaborationFlows).toBe(false);
-    expect(unavailableReason("collaborationFlows", rustCapabilities)).toContain("真实后端");
+    expect(rustCapabilities.groupSpaces).toBe(true);
+    expect(rustCapabilities.collaborationFlows).toBe(true);
+    expect(rustCapabilities.flowRuns).toBe(true);
+    expect(rustCapabilities.spaceInvites).toBe(true);
+    expect(rustCapabilities.approvals).toBe(false);
+    expect(unavailableReason("approvals", rustCapabilities)).toBeTruthy();
   });
 
   it("does not drop demo messages after sending", async () => {

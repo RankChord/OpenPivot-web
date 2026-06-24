@@ -1286,6 +1286,43 @@ input::placeholder {
   color: var(--text-secondary);
 }
 
+.flow-run-card label,
+.flow-run-result {
+  width: min(100%, 560px);
+}
+
+.flow-run-card label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.flow-run-card input,
+.flow-run-card select,
+.flow-run-card textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+  padding: 9px 10px;
+}
+
+.flow-run-card textarea {
+  min-height: 78px;
+  resize: vertical;
+}
+
+.flow-run-result {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 12px;
+}
+
 .profile-facts {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);

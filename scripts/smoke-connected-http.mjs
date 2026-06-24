@@ -76,14 +76,22 @@ function text(res, status, payload) {
 const state = {
   accessToken: "access-initial",
   conversationCreated: false,
+  flows: {},
   friends: [],
   invalidMessageFetches: 0,
   incomingRequests: [
     { id: 10, requester_id: 2, addressee_id: 1, status: "pending", message: "我想加入协作。" }
   ],
   messages: [],
+  nextFlowId: 31,
+  nextMemberId: 1,
+  nextMessageId: 1,
+  nextSpaceId: 21,
   outgoingRequests: [],
   refreshToken: "refresh-initial",
+  spaceMembers: {},
+  spaceMessages: {},
+  spaces: [],
   users: [
     { id: 1, username: "ling", nickname: "Ling" },
     { id: 2, username: "bob", nickname: "Bob" },
@@ -146,6 +154,75 @@ const server = http.createServer(async (req, res) => {
       request.status = "accepted";
       state.friends = [state.users[1]];
       return json(res, 200, request);
+    }
+    if ((pathName === "/v1/spaces" || pathName === "/v1/spaces/") && method === "GET") {
+      return json(res, 200, state.spaces);
+    }
+    if ((pathName === "/v1/spaces" || pathName === "/v1/spaces/") && method === "POST") {
+      const body = await readBody(req);
+      const space = { id: state.nextSpaceId++, name: body.name, space_type: "group", owner_id: 1 };
+      state.spaces.push(space);
+      state.spaceMembers[space.id] = [{ id: state.nextMemberId++, space_id: space.id, user_id: 1, role: "owner" }];
+      state.spaceMessages[space.id] = [];
+      state.flows[space.id] = [];
+      return json(res, 200, space);
+    }
+    const membersMatch = pathName.match(/^\/v1\/spaces\/(\d+)\/members$/);
+    if (membersMatch && method === "GET") {
+      const spaceId = Number(membersMatch[1]);
+      return json(res, 200, state.spaceMembers[spaceId] || []);
+    }
+    if (membersMatch && method === "POST") {
+      const spaceId = Number(membersMatch[1]);
+      const body = await readBody(req);
+      const member = { id: state.nextMemberId++, space_id: spaceId, user_id: body.user_id, role: "member" };
+      state.spaceMembers[spaceId] = [...(state.spaceMembers[spaceId] || []), member];
+      return json(res, 200, member);
+    }
+    const spaceMessagesMatch = pathName.match(/^\/v1\/spaces\/(\d+)\/messages$/);
+    if (spaceMessagesMatch && Number(spaceMessagesMatch[1]) === 999) {
+      state.invalidMessageFetches += 1;
+      return json(res, 500, { code: "invalid_space_leak", message: "Invalid space was requested" });
+    }
+    if (spaceMessagesMatch && method === "GET") {
+      const spaceId = Number(spaceMessagesMatch[1]);
+      return json(res, 200, state.spaceMessages[spaceId] || []);
+    }
+    if (spaceMessagesMatch && method === "POST") {
+      const spaceId = Number(spaceMessagesMatch[1]);
+      const body = await readBody(req);
+      const message = { id: state.nextMessageId++, space_id: spaceId, sender_id: 1, content: body.content, created_at: "2026-06-24T00:01:00Z" };
+      state.spaceMessages[spaceId] = [...(state.spaceMessages[spaceId] || []), message];
+      return json(res, 200, message);
+    }
+    const flowsMatch = pathName.match(/^\/v1\/spaces\/(\d+)\/flows$/);
+    if (flowsMatch && method === "GET") {
+      const spaceId = Number(flowsMatch[1]);
+      return json(res, 200, state.flows[spaceId] || []);
+    }
+    if (flowsMatch && method === "POST") {
+      const spaceId = Number(flowsMatch[1]);
+      const body = await readBody(req);
+      const flow = { id: state.nextFlowId++, space_id: spaceId, name: body.name, description: body.description ?? null, created_by: 1 };
+      state.flows[spaceId] = [...(state.flows[spaceId] || []), flow];
+      return json(res, 200, flow);
+    }
+    const flowRunMatch = pathName.match(/^\/v1\/spaces\/(\d+)\/flows\/(\d+)\/runs$/);
+    if (flowRunMatch && method === "POST") {
+      await readBody(req);
+      return json(res, 200, { run_id: 41, task_id: 51, status: "waiting_action" });
+    }
+    const completeTaskMatch = pathName.match(/^\/v1\/flow-tasks\/(\d+)\/complete$/);
+    if (completeTaskMatch && method === "POST") {
+      await readBody(req);
+      const spaceId = state.spaces[0]?.id;
+      if (spaceId) {
+        state.spaceMessages[spaceId] = [
+          ...(state.spaceMessages[spaceId] || []),
+          { id: state.nextMessageId++, space_id: spaceId, sender_id: 1, content: "流程任务已完成：确认需求", created_at: "2026-06-24T00:02:00Z" }
+        ];
+      }
+      return json(res, 200, { task_id: Number(completeTaskMatch[1]), run_id: 41, status: "completed" });
     }
     if (pathName === "/v1/conversations/direct" && method === "POST") {
       const body = await readBody(req);
@@ -226,24 +303,33 @@ try {
   await workspace.acceptContactRequest(inbox[0].requestId);
 
   const space = await workspace.createDirectSpace("user-2");
-  assert(space.id === "conversation-21", "direct conversation should become a stable collaboration space");
+  assert(space.id === "space-21", "direct collaboration should create a stable backend space");
   const sent = await workspace.sendMessage(space.id, "Connected HTTP smoke");
   assert(sent.blocks[0].text === "Connected HTTP smoke", "sent connected message should use content blocks");
   const messages = await workspace.listMessages(space.id);
   assert(messages.at(-1)?.id === sent.id, "sent connected message should be readable from the selected space");
-  let invalidConversationRejected = false;
+  let invalidSpaceRejected = false;
   try {
-    await workspace.listMessages("conversation-999");
+    await workspace.listMessages("space-999");
   } catch {
-    invalidConversationRejected = true;
+    invalidSpaceRejected = true;
   }
-  assert(invalidConversationRejected, "connected workspace should reject invalid conversation route ids");
-  assert(state.invalidMessageFetches === 0, "invalid conversation route ids should not reach the backend messages endpoint");
+  assert(invalidSpaceRejected, "connected workspace should reject invalid space route ids");
+  assert(state.invalidMessageFetches === 0, "invalid space route ids should not reach the backend messages endpoint");
+  const flow = await workspace.createFlow({ spaceId: space.id, title: "需求确认流程" });
+  assert(flow.spaceId === space.id, "connected flow should bind to the selected backend space");
+  const run = await workspace.startFlowRun({ spaceId: space.id, flowId: flow.id, assigneeId: "user-2", taskTitle: "确认需求" });
+  assert(run.taskId === "51", "connected flow run should expose backend task id");
+  const completed = await workspace.completeFlowTask(run.taskId, "done");
+  assert(completed.status === "completed", "connected flow task completion should use the backend task endpoint");
+  const afterFlowMessages = await workspace.listMessages(space.id);
+  assert(afterFlowMessages.some((message) => message.kind === "flow_event"), "completed backend flow task should appear as a space flow event");
 
   await restoredAdapter.logout();
   assert(store.get() === null, "logout should clear refresh token");
 
   console.log(JSON.stringify({
+    flow: flow.id,
     inboxRequest: inbox[0].requestId,
     ok: true,
     sentMessage: sent.id,

@@ -2,10 +2,16 @@ import {
   OpenPivotApiError,
   type AuthTokens,
   type Conversation,
+  type CompleteFlowTaskResponse,
+  type FlowResponse,
   type FriendRequest,
   type Message,
   type OpenPivotAdapter,
   type RefreshTokenStore,
+  type SpaceMemberResponse,
+  type SpaceProtocolMessage,
+  type SpaceResponse,
+  type StartFlowRunResponse,
   type UserSummary
 } from "../types";
 
@@ -147,6 +153,71 @@ export class RustHttpAdapter implements OpenPivotAdapter {
     return this.requestJson(`/conversations/${conversationId}/messages`, {
       method: "POST",
       body: { content }
+    });
+  }
+
+  createSpace(input: { name: string }): Promise<SpaceResponse> {
+    return this.requestJson("/spaces/", {
+      method: "POST",
+      body: input
+    });
+  }
+
+  async listSpaces(): Promise<SpaceResponse[]> {
+    return this.requestJsonWithSlashFallback("/spaces");
+  }
+
+  addSpaceMember(spaceId: number, userId: number): Promise<SpaceMemberResponse> {
+    return this.requestJson(`/spaces/${spaceId}/members`, {
+      method: "POST",
+      body: { user_id: userId }
+    });
+  }
+
+  listSpaceMembers(spaceId: number): Promise<SpaceMemberResponse[]> {
+    return this.requestJson(`/spaces/${spaceId}/members`);
+  }
+
+  createSpaceMessage(spaceId: number, content: string): Promise<SpaceProtocolMessage> {
+    return this.requestJson(`/spaces/${spaceId}/messages`, {
+      method: "POST",
+      body: { content }
+    });
+  }
+
+  listSpaceMessages(spaceId: number): Promise<SpaceProtocolMessage[]> {
+    return this.requestJson(`/spaces/${spaceId}/messages`);
+  }
+
+  createFlow(spaceId: number, input: { name: string; description?: string | null }): Promise<FlowResponse> {
+    return this.requestJson(`/spaces/${spaceId}/flows`, {
+      method: "POST",
+      body: {
+        name: input.name,
+        description: input.description ?? null
+      }
+    });
+  }
+
+  listFlows(spaceId: number): Promise<FlowResponse[]> {
+    return this.requestJson(`/spaces/${spaceId}/flows`);
+  }
+
+  startFlowRun(spaceId: number, flowId: number, input: { assigneeId: number; taskTitle: string; taskDescription?: string | null }): Promise<StartFlowRunResponse> {
+    return this.requestJson(`/spaces/${spaceId}/flows/${flowId}/runs`, {
+      method: "POST",
+      body: {
+        assignee_id: input.assigneeId,
+        task_title: input.taskTitle,
+        task_description: input.taskDescription ?? null
+      }
+    });
+  }
+
+  completeFlowTask(taskId: number, result: string): Promise<CompleteFlowTaskResponse> {
+    return this.requestJson(`/flow-tasks/${taskId}/complete`, {
+      method: "POST",
+      body: { result }
     });
   }
 

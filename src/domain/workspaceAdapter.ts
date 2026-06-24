@@ -2,6 +2,8 @@ import type {
   CollaborationFlow,
   CollaborationSpace,
   ContactRequest,
+  FlowRunStartResult,
+  FlowTaskCompleteResult,
   InboxItem,
   Participant,
   SpaceMessage
@@ -32,5 +34,7 @@ export interface WorkspaceAdapter {
   getFlow(spaceId: string, flowId: string): Promise<CollaborationFlow | null>;
   createFlow(input: { spaceId: string; title?: string }): Promise<CollaborationFlow>;
   createFlowFromMessage(spaceId: string, messageId: string): Promise<CollaborationFlow>;
+  startFlowRun?(input: { spaceId: string; flowId: string; assigneeId: string; taskTitle: string; taskDescription?: string }): Promise<FlowRunStartResult>;
+  completeFlowTask?(taskId: string, result: string): Promise<FlowTaskCompleteResult>;
   inviteParticipantToSpace(spaceId: string, participantId: string): Promise<CollaborationSpace>;
 }

@@ -18,16 +18,16 @@ export const demoCapabilities: ProductCapabilities = {
 
 export const rustCapabilities: ProductCapabilities = {
   directSpaces: true,
-  groupSpaces: false,
+  groupSpaces: true,
   participantSearch: true,
   contactRequests: true,
   realtimeMessages: false,
   attachments: false,
   richMessages: false,
-  collaborationFlows: false,
-  flowRuns: false,
+  collaborationFlows: true,
+  flowRuns: true,
   approvals: false,
-  spaceInvites: false,
+  spaceInvites: true,
   connectionManagement: false
 };
 

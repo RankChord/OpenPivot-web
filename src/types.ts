@@ -35,6 +35,49 @@ export interface Message {
   created_at: string;
 }
 
+export interface SpaceResponse {
+  id: number;
+  name: string;
+  space_type?: "group" | "workflow" | string;
+  type?: "group" | "workflow" | string;
+  owner_id: number;
+}
+
+export interface SpaceMemberResponse {
+  id: number;
+  space_id: number;
+  user_id: number;
+  role: "owner" | "admin" | "member" | string;
+}
+
+export interface SpaceProtocolMessage {
+  id: number;
+  space_id: number;
+  sender_id: number;
+  content: string;
+  created_at: string;
+}
+
+export interface FlowResponse {
+  id: number;
+  space_id: number;
+  name: string;
+  description: string | null;
+  created_by: number;
+}
+
+export interface StartFlowRunResponse {
+  run_id: number;
+  task_id: number;
+  status: "waiting_action" | string;
+}
+
+export interface CompleteFlowTaskResponse {
+  task_id: number;
+  run_id: number;
+  status: "completed" | string;
+}
+
 export interface OpenPivotAdapter {
   mode: ProductMode;
   health(): Promise<string>;
@@ -52,6 +95,16 @@ export interface OpenPivotAdapter {
   createDirectConversation(userId: number): Promise<Conversation>;
   listMessages(conversationId: number): Promise<Message[]>;
   sendMessage(conversationId: number, content: string): Promise<Message>;
+  createSpace(input: { name: string }): Promise<SpaceResponse>;
+  listSpaces(): Promise<SpaceResponse[]>;
+  addSpaceMember(spaceId: number, userId: number): Promise<SpaceMemberResponse>;
+  listSpaceMembers(spaceId: number): Promise<SpaceMemberResponse[]>;
+  createSpaceMessage(spaceId: number, content: string): Promise<SpaceProtocolMessage>;
+  listSpaceMessages(spaceId: number): Promise<SpaceProtocolMessage[]>;
+  createFlow(spaceId: number, input: { name: string; description?: string | null }): Promise<FlowResponse>;
+  listFlows(spaceId: number): Promise<FlowResponse[]>;
+  startFlowRun(spaceId: number, flowId: number, input: { assigneeId: number; taskTitle: string; taskDescription?: string | null }): Promise<StartFlowRunResponse>;
+  completeFlowTask(taskId: number, result: string): Promise<CompleteFlowTaskResponse>;
 }
 
 export interface RefreshTokenStore {

@@ -97,19 +97,64 @@ const inviteEvent = releaseMessages.at(-1);
 assert(inviteEvent?.kind === "system_event", "Inviting a participant must write a system event to the space timeline");
 assert(inviteEvent?.blocks?.[0]?.type === "text", "Invite timeline event must render through message blocks");
 
+const rustState = {
+  flows: {
+    9: [{ id: 7, space_id: 9, name: "Existing flow", description: "existing trigger", created_by: 1 }]
+  },
+  members: {
+    9: [
+      { id: 1, space_id: 9, user_id: 1, role: "owner" },
+      { id: 2, space_id: 9, user_id: 2, role: "member" }
+    ]
+  },
+  messages: {
+    9: [{ id: 1, space_id: 9, sender_id: 2, content: "hi", created_at: "2026-06-23T00:00:00Z" }]
+  },
+  nextFlowId: 8,
+  nextMemberId: 3,
+  nextMessageId: 2,
+  nextSpaceId: 10,
+  spaces: [{ id: 9, name: "Bob 协作空间", space_type: "group", owner_id: 1 }]
+};
+
 const rust = {
   acceptFriendRequest: async () => ({ id: 3, requester_id: 2, addressee_id: 1, status: "accepted", message: "hello" }),
-  createDirectConversation: async () => ({ id: 9, conversation_type: "direct", user_low_id: 1, user_high_id: 2 }),
   createFriendRequest: async ({ userId, message }) => ({ id: 3, requester_id: 1, addressee_id: userId, status: "pending", message: message ?? null }),
-  listConversations: async () => [{ id: 9, conversation_type: "direct", user_low_id: 1, user_high_id: 2 }],
+  createFlow: async (spaceId, input) => {
+    const flow = { id: rustState.nextFlowId++, space_id: spaceId, name: input.name, description: input.description ?? null, created_by: 1 };
+    rustState.flows[spaceId] = [...(rustState.flows[spaceId] || []), flow];
+    return flow;
+  },
+  createSpace: async ({ name }) => {
+    const space = { id: rustState.nextSpaceId++, name, space_type: "group", owner_id: 1 };
+    rustState.spaces.push(space);
+    rustState.members[space.id] = [{ id: rustState.nextMemberId++, space_id: space.id, user_id: 1, role: "owner" }];
+    rustState.messages[space.id] = [];
+    rustState.flows[space.id] = [];
+    return space;
+  },
+  addSpaceMember: async (spaceId, userId) => {
+    const member = { id: rustState.nextMemberId++, space_id: spaceId, user_id: userId, role: "member" };
+    rustState.members[spaceId] = [...(rustState.members[spaceId] || []), member];
+    return member;
+  },
+  createSpaceMessage: async (spaceId, content) => {
+    const message = { id: rustState.nextMessageId++, space_id: spaceId, sender_id: 1, content, created_at: "2026-06-23T00:01:00Z" };
+    rustState.messages[spaceId] = [...(rustState.messages[spaceId] || []), message];
+    return message;
+  },
+  completeFlowTask: async (taskId) => ({ task_id: taskId, run_id: 31, status: "completed" }),
+  listFlows: async (spaceId) => rustState.flows[spaceId] || [],
   listFriendRequests: async () => [{ id: 4, requester_id: 4, addressee_id: 1, status: "pending", message: "please connect" }],
   listFriends: async () => [{ id: 2, username: "bob", nickname: "Bob" }],
-  listMessages: async (conversationId) => [{ id: 1, conversation_id: conversationId, sender_id: 2, content: "hi", created_at: "2026-06-23T00:00:00Z" }],
+  listSpaceMembers: async (spaceId) => rustState.members[spaceId] || [],
+  listSpaceMessages: async (spaceId) => rustState.messages[spaceId] || [],
+  listSpaces: async () => rustState.spaces,
   rejectFriendRequest: async () => ({ id: 3, requester_id: 2, addressee_id: 1, status: "rejected", message: "hello" }),
   searchUsers: async (query) => query === "carol" || query === "3"
     ? [{ id: 3, username: "carol", nickname: "Carol" }]
     : [{ id: 2, username: "bob", nickname: "Bob" }],
-  sendMessage: async (conversationId, content) => ({ id: 2, conversation_id: conversationId, sender_id: 1, content, created_at: "2026-06-23T00:01:00Z" })
+  startFlowRun: async () => ({ run_id: 31, task_id: 32, status: "waiting_action" })
 };
 
 const connected = new ConnectedWorkspaceAdapter(rust, 1);
@@ -148,30 +193,42 @@ const connectedRelationshipWins = new ConnectedWorkspaceAdapter({
 }, 1);
 assert((await connectedRelationshipWins.getParticipant("user-2"))?.relationship === "connected", "Connected relationships must win over stale pending requests");
 const spaces = await connected.listSpaces();
-assert(spaces[0].id === "conversation-9", "Connected direct conversation must map to a stable space URL");
-assert(spaces[0].kind === "direct", "Connected direct conversation must map to a direct collaboration space");
-let invalidConversationMessagesCalled = false;
-const invalidConversationAdapter = new ConnectedWorkspaceAdapter({
+assert(spaces[0].id === "space-9", "Connected backend space must map to a stable space URL");
+assert(spaces[0].kind === "direct", "Connected two-member backend space must map to a direct collaboration space");
+let invalidSpaceMessagesCalled = false;
+const invalidSpaceAdapter = new ConnectedWorkspaceAdapter({
   ...rust,
-  listMessages: async () => {
-    invalidConversationMessagesCalled = true;
+  listSpaceMessages: async () => {
+    invalidSpaceMessagesCalled = true;
     return [];
   }
 }, 1);
-let invalidConversationRejected = false;
+let invalidSpaceRejected = false;
 try {
-  await invalidConversationAdapter.listMessages("conversation-999");
+  await invalidSpaceAdapter.listMessages("space-999");
 } catch {
-  invalidConversationRejected = true;
+  invalidSpaceRejected = true;
 }
-assert(invalidConversationRejected, "Connected messages must reject conversation ids outside the resolved space list");
-assert(!invalidConversationMessagesCalled, "Connected invalid conversation ids must not hit the backend messages endpoint");
-const sent = await connected.sendMessage("conversation-9", "connected smoke");
-assert(sent.spaceId === "conversation-9", "Connected send must map the backend message into the current space");
+assert(invalidSpaceRejected, "Connected messages must reject space ids outside the resolved space list");
+assert(!invalidSpaceMessagesCalled, "Connected invalid space ids must not hit the backend messages endpoint");
+const sent = await connected.sendMessage("space-9", "connected smoke");
+assert(sent.spaceId === "space-9", "Connected send must map the backend message into the current space");
 assert(sent.blocks[0].text === "connected smoke", "Connected sent text must render through message blocks");
+const directSpace = await connected.createDirectSpace("user-2");
+assert(directSpace.id.startsWith("space-"), "Connected direct collaboration must create a real backend space");
+assert(directSpace.participantIds.includes("user-2"), "Connected direct collaboration must add the selected participant as a space member");
+const connectedFlow = await connected.createFlow({ spaceId: "space-9", title: "需求确认流程" });
+assert(connectedFlow.spaceId === "space-9", "Connected flow creation must bind to the real backend space");
+const listedFlows = await connected.listFlows("space-9");
+assert(listedFlows.some((candidate) => candidate.id === connectedFlow.id), "Connected flow list must include newly created backend flows");
+const run = await connected.startFlowRun({ spaceId: "space-9", flowId: connectedFlow.id, assigneeId: "user-2", taskTitle: "确认需求" });
+assert(run.taskId === "32" && run.status === "waiting_action", "Connected flow run must expose backend task id and status");
+const completed = await connected.completeFlowTask(run.taskId, "done");
+assert(completed.status === "completed", "Connected flow task completion must call the backend task endpoint");
 
 console.log(JSON.stringify({
   connectedSpace: spaces[0].id,
+  connectedFlow: connectedFlow.id,
   demoFlow: flow.id,
   invitedSpace: updated.id,
   ok: true,

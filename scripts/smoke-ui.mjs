@@ -155,9 +155,8 @@ let view = renderWithProviders(
     onClose: () => undefined
   })
 );
-const disabledCreateSpace = screen.getByRole("button", { name: "新建协作空间" });
-assert(disabledCreateSpace.disabled, "Connected new menu must disable unsupported group space creation");
-assert(!document.querySelector('a[href="/spaces/new"]'), "Connected new menu must not expose /spaces/new as a clickable link");
+const connectedCreateSpace = screen.getByRole("link", { name: "新建协作空间" });
+assert(connectedCreateSpace.getAttribute("href") === "/spaces/new", "Connected new menu must expose real backend space creation");
 assert(!document.body.textContent?.includes("与参与者开始对话"), "New menu must not promise a direct conversation action");
 assert(!document.body.textContent?.includes("建立联系"), "New menu must not expose connection management as daily navigation");
 assert(document.body.textContent?.includes("查找参与者"), "New menu should route users to participant discovery");
@@ -217,9 +216,8 @@ view = renderWithProviders(
     app: createApp({ capabilities: rustCapabilities, mode: "connected", workspace: connectedWorkspace })
   })
 );
-await screen.findByText("查找参与者");
-assert(document.querySelector('a[href="/participants"]'), "Connected empty spaces state must guide users to participants");
-assert(!document.querySelector('a[href="/spaces/new"]'), "Connected spaces page must not expose unsupported group space creation");
+await screen.findByText("创建协作空间");
+assert(document.querySelector('a[href="/spaces/new"]'), "Connected empty spaces state must guide users to real backend space creation");
 view.dispose();
 
 resetDemoWorkspace();
@@ -308,8 +306,61 @@ view = renderWithProviders(
     app: createApp({ capabilities: rustCapabilities, mode: "connected", workspace: connectedWorkspace })
   })
 );
-await screen.findByText("真实后端暂未接入流程");
-assert(!document.querySelector('a[href="/flows/new"]'), "Connected flow overview must not expose unsupported global flow creation");
+await screen.findByText("没有可显示的协作流程");
+assert(!document.querySelector('a[href="/flows/new"]'), "Connected flow overview must route flow creation through spaces instead of a global fake route");
+view.dispose();
+
+const flowRunCalls = [];
+view = renderWithProviders(
+  React.createElement(Routes, null,
+    React.createElement(Route, {
+      path: "/spaces/:spaceId/flows/:flowId",
+      element: React.createElement(FlowDetailPage, {
+        app: createApp({ capabilities: rustCapabilities, mode: "connected", workspace: {
+          getSpace: async (spaceId) => ({
+            id: spaceId,
+            kind: "multi",
+            participantIds: ["me", "user-2"],
+            title: "产品协作空间"
+          }),
+          getFlow: async (spaceId, flowId) => ({
+            id: flowId,
+            sourceFlowId: 31,
+            spaceId,
+            status: "draft",
+            title: "需求确认流程",
+            trigger: "手动启动协作流程",
+            steps: [
+              { id: "trigger", kind: "trigger", title: "手动启动", detail: "来自空间", status: "completed" },
+              { id: "task", kind: "request_participant", title: "协作者操作", detail: "等待处理", status: "idle" },
+              { id: "notify", kind: "post_to_space", title: "写回空间", detail: "完成后通知", status: "idle" }
+            ]
+          }),
+          listParticipants: async () => [
+            { id: "me", kind: "human", displayName: "Ling", relationship: "self" },
+            { id: "user-2", kind: "human", displayName: "Bob", relationship: "connected" }
+          ],
+          listInboxItems: async () => [],
+          startFlowRun: async (input) => {
+            flowRunCalls.push(`start:${input.spaceId}:${input.flowId}:${input.assigneeId}:${input.taskTitle}`);
+            return { runId: "41", taskId: "51", status: "waiting_action" };
+          },
+          completeFlowTask: async (taskId, result) => {
+            flowRunCalls.push(`complete:${taskId}:${result}`);
+            return { runId: "41", taskId, status: "completed" };
+          }
+        } })
+      })
+    })
+  ),
+  { initialEntries: ["/spaces/space-9/flows/flow-31"] }
+);
+await screen.findByText("启动一次真实流程运行");
+fireEvent.click(screen.getByRole("button", { name: "启动流程运行" }));
+await screen.findByText("任务 #51 已创建");
+assert(flowRunCalls.some((call) => call.startsWith("start:space-9:flow-31:me")), "Connected flow detail must start runs through the workspace adapter");
+fireEvent.click(screen.getByRole("button", { name: "完成任务并写回空间" }));
+await waitFor(() => assert(flowRunCalls.some((call) => call.startsWith("complete:51:")), "Connected flow detail must complete backend flow tasks"));
 view.dispose();
 
 const approvalFlow = {
@@ -652,15 +703,16 @@ view.dispose();
 console.log(JSON.stringify({
   ok: true,
   checks: [
-    "connected-new-menu-gates-group-space",
+    "connected-new-menu-exposes-real-space-creation",
     "new-menu-uses-participant-discovery-language",
     "new-menu-routes-flow-creation-through-spaces",
     "command-search-only-advertises-supported-domains",
     "settings-api-save-is-stateful",
     "demo-settings-hides-fake-logout",
-    "connected-spaces-empty-state-guides-to-participants",
+    "connected-spaces-empty-state-guides-to-space-creation",
     "create-space-requires-connected-participants",
     "space-flow-create-binds-current-space",
+    "connected-flow-run-start-complete-actions",
     "flow-detail-approval-requires-matching-inbox-item",
     "flow-detail-requires-real-space-context",
     "participant-self-profile-disables-direct-space",
@@ -673,7 +725,7 @@ console.log(JSON.stringify({
     "inbox-contact-request-links-to-participant",
     "demo-app-inbox-space-send-participants-flow-approval",
     "demo-failed-message-retry",
-    "connected-flows-hide-unsupported-create"
+    "connected-flow-overview-uses-real-empty-state"
   ]
 }, null, 2));
 process.exit(0);

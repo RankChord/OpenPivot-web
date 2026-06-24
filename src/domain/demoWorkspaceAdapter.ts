@@ -518,6 +518,9 @@ export class DemoWorkspaceAdapter implements WorkspaceAdapter {
         const step = stepIndex >= 0 ? flow?.steps[stepIndex] : undefined;
 
         if (flow && step && approvalPassed) {
+          flow.steps.slice(0, stepIndex).forEach((candidate) => {
+            if (candidate.status === "running") candidate.status = "completed";
+          });
           step.status = "completed";
           const nextStep = flow.steps[stepIndex + 1];
           if (nextStep) {
