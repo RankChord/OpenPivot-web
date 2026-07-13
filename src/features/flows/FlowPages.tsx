@@ -1,13 +1,56 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState, type PointerEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { AppContextValue } from "../../app/AppContext";
 import { applyInboxApprovalToFlowCache, invalidateWorkspaceQueries } from "../../app/AppContext";
 import { unavailableReason } from "../../domain/capabilities";
-import type { CollaborationFlow, FlowRunStartResult, InboxItem, Participant } from "../../domain/models";
+import type { CollaborationFlow, FlowRunStartResult, FlowStepKind, InboxItem, Participant } from "../../domain/models";
 import { EmptyState, InlinePage, InlineState, PageTitle } from "../../components/feedback/Feedback";
+
+type DesignerNodeKind = FlowStepKind | "start" | "end";
+
+interface DesignerNode {
+  id: string;
+  kind: DesignerNodeKind;
+  title: string;
+  detail: string;
+  x: number;
+  y: number;
+  locked?: boolean;
+}
+
+interface DesignerEdge {
+  id: string;
+  sourceId: string;
+  targetId: string;
+}
+
+type ConnectionDraft =
+  | { mode: "new"; sourceId: string }
+  | { mode: "replace-source"; edgeId: string }
+  | { mode: "replace-target"; edgeId: string };
+
+type DesignerPort = "top" | "right" | "bottom" | "left";
+
+const nodeWidth = 176;
+const nodeHeight = 88;
+const canvasWidth = 1360;
+const canvasHeight = 820;
+
+const paletteNodes: Array<{ kind: FlowStepKind; title: string; detail: string }> = [
+  { kind: "request_participant", title: "请求参与者", detail: "指派成员处理任务" },
+  { kind: "wait_for_response", title: "等待回复", detail: "暂停直到收到回应" },
+  { kind: "approval", title: "审批", detail: "人工确认后继续" },
+  { kind: "condition", title: "条件判断", detail: "按结果选择分支" },
+  { kind: "parallel", title: "并行", detail: "同时执行多条路径" },
+  { kind: "delay", title: "延时", detail: "等待一段时间" },
+  { kind: "timeout", title: "超时", detail: "超过时限后处理" },
+  { kind: "retry", title: "重试", detail: "失败后再次执行" },
+  { kind: "escalate", title: "升级处理", detail: "转交给更高优先级" },
+  { kind: "post_to_space", title: "写回空间", detail: "把结果发送到协作空间" }
+];
 
 export function FlowsOverviewPage({ app }: { app: AppContextValue }) {
   const flowsQuery = useQuery({
@@ -134,60 +177,302 @@ export function FlowDetailPage({ app }: { app: AppContextValue }) {
   const selectedAssigneeId = assigneeId || participants[0]?.id || "";
   const waiting = flow.steps.find((step) => step.id === flow.waitingStepId && step.status === "waiting");
   const approvalItem = (inboxQuery.data || []).find((item) => item.kind === "approval" && item.status === "open" && item.spaceId === space.id && item.flowId === flow.id && item.stepId === waiting?.id);
-  const approvalReason = unavailableReason("approvals", app.environment.capabilities) || "当前收件箱没有匹配此流程步骤的审批事项。";
+  const approvalReason = unavailableReason("approvals", app.environment.capabilities) || "当前没有匹配此流程步骤的审批事项。";
   const canCompleteLatestRun = latestRun && latestRunAssigneeId === app.environment.currentUserId && app.workspace?.completeFlowTask;
 
   return (
-    <section className="center-page page-fade">
-      <div className="main-column">
-        <PageTitle title={flow.title} subtitle="流程属于当前协作空间，负责请求参与者、等待处理，并把结果写回空间。" action={<Link className="quiet-button" to={`/spaces/${space.id}`}>回到空间</Link>} />
-        <article className="flow-script">
-          <header>
-            <span>当</span>
-            <strong>{flow.trigger}</strong>
-          </header>
-          <div className="workflow-steps">
-            {flow.steps.map((step, index) => (
-              <article className={clsx("workflow-step", step.status)} key={step.id}>
-                <em>{String(index + 1).padStart(2, "0")}</em>
-                <span>
-                  <strong>{step.title}</strong>
-                  <small>{step.detail}</small>
-                </span>
-              </article>
-            ))}
-          </div>
-        </article>
+    <section className="workflow-page page-fade">
+      <header className="workflow-topbar">
+        <div>
+          <h1>{flow.title}</h1>
+          <p>{space.title} · 工作流设计</p>
+        </div>
+        <div className="workflow-topbar-actions">
+          <Link className="quiet-button" to={`/spaces/${space.id}/flows`}>流程列表</Link>
+          <Link className="quiet-button" to={`/spaces/${space.id}`}>回到空间</Link>
+        </div>
+      </header>
 
-        {app.environment.capabilities.flowRuns && app.workspace?.startFlowRun && (
-          <FlowRunPanel
-            assigneeId={selectedAssigneeId}
-            completeError={completeTask.error}
-            completePending={completeTask.isPending}
-            canCompleteLatestRun={!!canCompleteLatestRun}
-            latestRun={latestRun}
-            participants={participants}
-            runAssigneeId={latestRunAssigneeId}
-            startError={startRun.error}
-            startPending={startRun.isPending}
-            taskDescription={taskDescription}
-            taskResult={taskResult}
-            taskTitle={taskTitle}
-            onAssigneeChange={setAssigneeId}
-            onComplete={() => completeTask.mutate()}
-            onStart={() => startRun.mutate()}
-            onTaskDescriptionChange={setTaskDescription}
-            onTaskResultChange={setTaskResult}
-            onTaskTitleChange={setTaskTitle}
-          />
-        )}
+      <div className="workflow-builder workflow-designer-layout">
+        <WorkflowDesigner flow={flow} />
+        <aside className="flow-inspector">
+          {app.environment.capabilities.flowRuns && app.workspace?.startFlowRun && (
+            <FlowRunPanel
+              assigneeId={selectedAssigneeId}
+              completeError={completeTask.error}
+              completePending={completeTask.isPending}
+              canCompleteLatestRun={!!canCompleteLatestRun}
+              latestRun={latestRun}
+              participants={participants}
+              runAssigneeId={latestRunAssigneeId}
+              startError={startRun.error}
+              startPending={startRun.isPending}
+              taskDescription={taskDescription}
+              taskResult={taskResult}
+              taskTitle={taskTitle}
+              onAssigneeChange={setAssigneeId}
+              onComplete={() => completeTask.mutate()}
+              onStart={() => startRun.mutate()}
+              onTaskDescriptionChange={setTaskDescription}
+              onTaskResultChange={setTaskResult}
+              onTaskTitleChange={setTaskTitle}
+            />
+          )}
 
-        {waiting && (
-          <div className="flow-run-card">
-            <strong>{flow.title} 正在等待处理</strong>
-            <small>{waiting.title}</small>
-            <button className="primary-button" disabled={completeApproval.isPending || !approvalItem || !app.environment.capabilities.approvals} title={approvalItem && app.environment.capabilities.approvals ? undefined : approvalReason} onClick={() => approvalItem && completeApproval.mutate(approvalItem)}>批准并继续</button>
+          {waiting && (
+            <div className="flow-run-card">
+              <strong>{flow.title} 正在等待处理</strong>
+              <small>{waiting.title}</small>
+              <button className="primary-button" disabled={completeApproval.isPending || !approvalItem || !app.environment.capabilities.approvals} title={approvalItem && app.environment.capabilities.approvals ? undefined : approvalReason} onClick={() => approvalItem && completeApproval.mutate(approvalItem)}>批准并继续</button>
+            </div>
+          )}
+        </aside>
+      </div>
+    </section>
+  );
+
+}
+function WorkflowDesigner({ flow }: { flow: CollaborationFlow }) {
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const nodeCounterRef = useRef(0);
+  const dragRef = useRef<{
+    moved: boolean;
+    nodeId: string;
+    offsetX: number;
+    offsetY: number;
+    pointerId: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
+  const [nodes, setNodes] = useState<DesignerNode[]>(() => initialDesignerNodes(flow));
+  const [edges, setEdges] = useState<DesignerEdge[]>(() => [{ id: "edge-start-end", sourceId: "start", targetId: "end" }]);
+  const [selectedNodeId, setSelectedNodeId] = useState("start");
+  const [selectedEdgeId, setSelectedEdgeId] = useState("edge-start-end");
+  const [draft, setDraft] = useState<ConnectionDraft | null>(null);
+  const [cursor, setCursor] = useState({ x: 0, y: 0 });
+  const selectedNode = nodes.find((node) => node.id === selectedNodeId) || nodes[0];
+
+  function canvasPoint(event: PointerEvent) {
+    const surface = surfaceRef.current;
+    if (!surface) return { x: 0, y: 0 };
+    const rect = surface.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.min(canvasWidth, event.clientX - rect.left)),
+      y: Math.max(0, Math.min(canvasHeight, event.clientY - rect.top))
+    };
+  }
+
+  function addNode(template: (typeof paletteNodes)[number]) {
+    const id = `node-${Date.now()}-${nodeCounterRef.current++}`;
+    const offset = nodeCounterRef.current % 5;
+    const node: DesignerNode = {
+      id,
+      kind: template.kind,
+      title: template.title,
+      detail: template.detail,
+      x: 390 + offset * 34,
+      y: 180 + offset * 46
+    };
+    setNodes((current) => [...current, node]);
+    setSelectedNodeId(id);
+    setSelectedEdgeId("");
+    setDraft(null);
+  }
+
+  function updateNode(input: Partial<Pick<DesignerNode, "title" | "detail">>) {
+    if (!selectedNode || selectedNode.locked) return;
+    setNodes((current) => current.map((node) => node.id === selectedNode.id ? { ...node, ...input } : node));
+  }
+
+  function edgeAtPort(nodeId: string, port: DesignerPort) {
+    for (const edge of edges) {
+      const source = nodes.find((node) => node.id === edge.sourceId);
+      const target = nodes.find((node) => node.id === edge.targetId);
+      if (!source || !target) continue;
+      if (edge.sourceId === nodeId && portSideToCursor(source, centerPoint(target)) === port) {
+        return { edge, mode: "replace-source" as const };
+      }
+      if (edge.targetId === nodeId && portSideToCursor(target, centerPoint(source)) === port) {
+        return { edge, mode: "replace-target" as const };
+      }
+    }
+    return null;
+  }
+
+  function handlePortPointerDown(event: PointerEvent<HTMLElement>, nodeId: string, port: DesignerPort) {
+    event.preventDefault();
+    event.stopPropagation();
+    setCursor(canvasPoint(event));
+    setSelectedNodeId(nodeId);
+    if (draft) {
+      completeConnection(nodeId);
+      return;
+    }
+    const connectedEndpoint = edgeAtPort(nodeId, port);
+    if (connectedEndpoint) {
+      setSelectedEdgeId(connectedEndpoint.edge.id);
+      setDraft({ mode: connectedEndpoint.mode, edgeId: connectedEndpoint.edge.id });
+      return;
+    }
+    setSelectedEdgeId("");
+    setDraft({ mode: "new", sourceId: nodeId });
+  }
+
+  function handleNodePointerDown(event: PointerEvent<HTMLElement>, node: DesignerNode) {
+    if (event.button !== 0) return;
+    const point = canvasPoint(event);
+    dragRef.current = {
+      moved: false,
+      nodeId: node.id,
+      offsetX: point.x - node.x,
+      offsetY: point.y - node.y,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handleNodePointerMove(event: PointerEvent<HTMLElement>, node: DesignerNode) {
+    const drag = dragRef.current;
+    if (!drag || drag.nodeId !== node.id) return;
+    const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+    if (distance > 3) drag.moved = true;
+    const point = canvasPoint(event);
+    const nextX = Math.max(24, Math.min(canvasWidth - nodeWidth - 24, point.x - drag.offsetX));
+    const nextY = Math.max(24, Math.min(canvasHeight - nodeHeight - 24, point.y - drag.offsetY));
+    setNodes((current) => current.map((item) => item.id === node.id ? { ...item, x: nextX, y: nextY } : item));
+  }
+
+  function handleNodePointerUp(event: PointerEvent<HTMLElement>, node: DesignerNode) {
+    const drag = dragRef.current;
+    if (!drag || drag.nodeId !== node.id) return;
+    event.currentTarget.releasePointerCapture(drag.pointerId);
+    dragRef.current = null;
+    if (!drag.moved) handleNodeClick(node.id);
+  }
+
+  function handleNodeClick(nodeId: string) {
+    setSelectedNodeId(nodeId);
+    if (draft) {
+      completeConnection(nodeId);
+      return;
+    }
+    setSelectedEdgeId("");
+  }
+
+  function completeConnection(nodeId: string) {
+    if (!draft) return;
+    if (draft.mode === "new") {
+      if (draft.sourceId === nodeId) {
+        setDraft(null);
+        return;
+      }
+      const existing = edges.find((edge) => edge.sourceId === draft.sourceId && edge.targetId === nodeId);
+      if (existing) {
+        setSelectedEdgeId(existing.id);
+      } else {
+        const edge = { id: `edge-${draft.sourceId}-${nodeId}-${Date.now()}`, sourceId: draft.sourceId, targetId: nodeId };
+        setEdges((current) => [...current, edge]);
+        setSelectedEdgeId(edge.id);
+      }
+    } else {
+      const edge = edges.find((item) => item.id === draft.edgeId);
+      if (!edge) return;
+      if (draft.mode === "replace-source" && edge.targetId !== nodeId) {
+        setEdges((current) => current.map((item) => item.id === draft.edgeId ? { ...item, sourceId: nodeId } : item));
+      }
+      if (draft.mode === "replace-target" && edge.sourceId !== nodeId) {
+        setEdges((current) => current.map((item) => item.id === draft.edgeId ? { ...item, targetId: nodeId } : item));
+      }
+      setSelectedEdgeId(draft.edgeId);
+    }
+    setDraft(null);
+  }
+
+  function handleCanvasPointerMove(event: PointerEvent) {
+    if (draft) setCursor(canvasPoint(event));
+  }
+
+  function clearDraft() {
+    setDraft(null);
+  }
+
+  return (
+    <section className="workflow-canvas-panel">
+      <div className="canvas-toolbar">
+        <span>画布</span>
+        <small>{draft ? "连线中" : `${nodes.length} 个节点 · ${edges.length} 条连线`}</small>
+        <div>
+          <button type="button" disabled={!draft} onClick={clearDraft}>Esc</button>
+        </div>
+      </div>
+      <div className="flow-canvas" ref={canvasRef} onPointerMove={handleCanvasPointerMove}>
+        <div className="flow-canvas-surface" ref={surfaceRef}>
+          <svg className="flow-lines" viewBox={`0 0 ${canvasWidth} ${canvasHeight}`} style={{ width: canvasWidth, height: canvasHeight }}>
+            {edges.map((edge) => {
+              const source = nodes.find((node) => node.id === edge.sourceId);
+              const target = nodes.find((node) => node.id === edge.targetId);
+              if (!source || !target) return null;
+              return (
+                <path
+                  className={clsx(edge.id === selectedEdgeId && "selected")}
+                  d={edgePath(source, target)}
+                  key={edge.id}
+                />
+              );
+            })}
+            {draft && <path className="draft" d={draftPath(draft, nodes, edges, cursor)} />}
+          </svg>
+
+          <div className="node-floating-palette">
+            <h2>节点</h2>
+            <div>
+              {paletteNodes.map((node) => (
+                <button type="button" key={node.kind} onClick={() => addNode(node)}>
+                  <strong>{node.title}</strong>
+                  <small>{node.detail}</small>
+                </button>
+              ))}
+            </div>
           </div>
+
+          {nodes.map((node) => (
+            <article
+              className={clsx("flow-canvas-node", selectedNodeId === node.id && "selected", node.locked && "locked")}
+              data-node-id={node.id}
+              key={node.id}
+              style={{ transform: `translate(${node.x}px, ${node.y}px)` }}
+              onPointerDown={(event) => handleNodePointerDown(event, node)}
+              onPointerMove={(event) => handleNodePointerMove(event, node)}
+              onPointerUp={(event) => handleNodePointerUp(event, node)}
+            >
+              <i className="workflow-port top" data-port="top" onPointerDown={(event) => handlePortPointerDown(event, node.id, "top")} />
+              <i className="workflow-port right" data-port="right" onPointerDown={(event) => handlePortPointerDown(event, node.id, "right")} />
+              <i className="workflow-port bottom" data-port="bottom" onPointerDown={(event) => handlePortPointerDown(event, node.id, "bottom")} />
+              <i className="workflow-port left" data-port="left" onPointerDown={(event) => handlePortPointerDown(event, node.id, "left")} />
+              <small>{nodeKindLabel(node.kind)}</small>
+              <strong>{node.title}</strong>
+              <span>{node.detail}</span>
+            </article>
+          ))}
+        </div>
+      </div>
+
+      <div className="workflow-node-editor">
+        {selectedNode && (
+          <>
+            <span className="node-type">{nodeKindLabel(selectedNode.kind)}</span>
+            <label>
+              <span>名称</span>
+              <input value={selectedNode.title} disabled={selectedNode.locked} onChange={(event) => updateNode({ title: event.target.value })} />
+            </label>
+            <label>
+              <span>说明</span>
+              <textarea value={selectedNode.detail} disabled={selectedNode.locked} onChange={(event) => updateNode({ detail: event.target.value })} />
+            </label>
+          </>
         )}
       </div>
     </section>
@@ -271,4 +556,122 @@ function FlowRunPanel({
       )}
     </div>
   );
+}
+
+function initialDesignerNodes(flow: CollaborationFlow): DesignerNode[] {
+  return [
+    {
+      id: "start",
+      kind: "start",
+      title: "开始",
+      detail: flow.trigger || "触发工作流",
+      x: 190,
+      y: 330,
+      locked: true
+    },
+    {
+      id: "end",
+      kind: "end",
+      title: "结束",
+      detail: "流程完成",
+      x: 720,
+      y: 330,
+      locked: true
+    }
+  ];
+}
+
+function nodeKindLabel(kind: DesignerNodeKind) {
+  const labels: Record<DesignerNodeKind, string> = {
+    approval: "审批",
+    condition: "条件",
+    delay: "延时",
+    end: "结束",
+    escalate: "升级",
+    finish: "结束",
+    parallel: "并行",
+    post_to_space: "写回",
+    request_participant: "任务",
+    retry: "重试",
+    start: "开始",
+    timeout: "超时",
+    trigger: "触发",
+    wait_for_response: "等待"
+  };
+  return labels[kind];
+}
+
+function edgePath(source: DesignerNode, target: DesignerNode) {
+  const start = portPoint(source, target);
+  const end = portPoint(target, source);
+  return curvePath(start, end);
+}
+
+function draftPath(draft: ConnectionDraft, nodes: DesignerNode[], edges: DesignerEdge[], cursor: { x: number; y: number }) {
+  if (draft.mode === "new") {
+    const source = nodes.find((node) => node.id === draft.sourceId);
+    if (!source) return "";
+    return curvePath(portPointToCursor(source, cursor), cursor);
+  }
+  const edge = edges.find((item) => item.id === draft.edgeId);
+  if (!edge) return "";
+  if (draft.mode === "replace-source") {
+    const target = nodes.find((node) => node.id === edge.targetId);
+    if (!target) return "";
+    return curvePath(cursor, portPointToCursor(target, cursor));
+  }
+  const source = nodes.find((node) => node.id === edge.sourceId);
+  if (!source) return "";
+  return curvePath(portPointToCursor(source, cursor), cursor);
+}
+
+function portPoint(node: DesignerNode, other: DesignerNode) {
+  return portPointToCursor(node, centerPoint(other));
+}
+
+function portPointToCursor(node: DesignerNode, point: { x: number; y: number }) {
+  return portPointOnSide(node, portSideToCursor(node, point));
+}
+
+function portSideToCursor(node: DesignerNode, point: { x: number; y: number }): DesignerPort {
+  const center = centerPoint(node);
+  const dx = point.x - center.x;
+  const dy = point.y - center.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0 ? "right" : "left";
+  }
+  return dy >= 0 ? "bottom" : "top";
+}
+
+function portPointOnSide(node: DesignerNode, side: DesignerPort) {
+  if (side === "left" || side === "right") {
+    return {
+      x: node.x + (side === "right" ? nodeWidth : 0),
+      y: node.y + nodeHeight / 2
+    };
+  }
+  return {
+    x: node.x + nodeWidth / 2,
+    y: node.y + (side === "bottom" ? nodeHeight : 0)
+  };
+}
+
+function centerPoint(node: DesignerNode) {
+  return {
+    x: node.x + nodeWidth / 2,
+    y: node.y + nodeHeight / 2
+  };
+}
+
+function curvePath(start: { x: number; y: number }, end: { x: number; y: number }) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    const bend = Math.max(80, Math.abs(dx) * 0.45);
+    const direction = dx >= 0 ? 1 : -1;
+    return `M ${start.x} ${start.y} C ${start.x + bend * direction} ${start.y}, ${end.x - bend * direction} ${end.y}, ${end.x} ${end.y}`;
+  }
+  const bend = Math.max(70, Math.abs(dy) * 0.45);
+  const direction = dy >= 0 ? 1 : -1;
+  return `M ${start.x} ${start.y} C ${start.x} ${start.y + bend * direction}, ${end.x} ${end.y - bend * direction}, ${end.x} ${end.y}`;
 }

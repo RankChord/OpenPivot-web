@@ -1,5 +1,15 @@
-export function ActorAvatar({ id, size = "md" }: { id: string; size?: "sm" | "md" | "lg" }) {
+import clsx from "clsx";
+
+export function ActorAvatar({ id, size = "md", src, alt = "" }: { id: string; size?: "sm" | "md" | "lg"; src?: string; alt?: string }) {
   const variant = avatarVariant(id);
+  if (src) {
+    return (
+      <span className={clsx("actor-avatar", `avatar-${size}`, "avatar-image")} aria-hidden={!alt}>
+        <img src={src} alt={alt} />
+      </span>
+    );
+  }
+
   return (
     <span className={clsx("actor-avatar", `avatar-${size}`, `avatar-${variant}`)} aria-hidden="true">
       <svg viewBox="0 0 48 48" role="img">
@@ -23,4 +33,3 @@ export function avatarVariant(id: string) {
   if (id.includes("atlas")) return "atlas";
   return "guest";
 }
-import clsx from "clsx";

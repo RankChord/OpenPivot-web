@@ -2,9 +2,10 @@ import { GitBranch } from "lucide-react";
 import type { MessageBlock, Participant, SpaceMessage } from "../../domain/models";
 import { blockText, deliveryLabel, shortTime } from "../../shared/format";
 import { ActorAvatar } from "../avatar/ActorAvatar";
-export function MessageView({ message, participants, canCreateFlow, onCreateFlow, createFlowPending, onRetryMessage, retryPending }: {
+export function MessageView({ message, participants, currentUserId, canCreateFlow, onCreateFlow, createFlowPending, onRetryMessage, retryPending }: {
   message: SpaceMessage;
   participants: Participant[];
+  currentUserId?: string;
   canCreateFlow: boolean;
   onCreateFlow: (messageId: string) => void;
   createFlowPending: boolean;
@@ -12,6 +13,9 @@ export function MessageView({ message, participants, canCreateFlow, onCreateFlow
   retryPending?: boolean;
 }) {
   const sender = participants.find((participant) => participant.id === message.senderId);
+  const isOwn = !!currentUserId && message.senderId === currentUserId;
+  const canRetry = message.deliveryState === "failed" && !!onRetryMessage;
+  const showActions = canRetry || canCreateFlow;
   if (message.kind !== "message") {
     return (
       <div className="tool-line" data-message-id={message.id} id={message.id}>
@@ -21,7 +25,7 @@ export function MessageView({ message, participants, canCreateFlow, onCreateFlow
     );
   }
   return (
-    <article className="space-message" data-delivery-state={message.deliveryState || "sent"} data-message-id={message.id} id={message.id}>
+    <article className="space-message" data-own={isOwn ? "true" : "false"} data-delivery-state={message.deliveryState || "sent"} data-message-id={message.id} id={message.id}>
       <div className="message-author">
         <ActorAvatar id={sender?.id || "system"} size="sm" />
         <span>
@@ -32,16 +36,18 @@ export function MessageView({ message, participants, canCreateFlow, onCreateFlow
       <div className="content-card">
         {message.blocks.map((block, index) => <MessageBlockView block={block} key={`${message.id}-${index}`} />)}
       </div>
-      <div className="message-actions">
-        {message.deliveryState === "failed" && (
-          <button className="text-button" disabled={retryPending || !onRetryMessage} title={onRetryMessage ? undefined : "当前环境暂不支持重试"} onClick={() => onRetryMessage?.(message.id)}>
+      {showActions && <div className="message-actions">
+        {canRetry && (
+          <button className="text-button" disabled={retryPending} onClick={() => onRetryMessage?.(message.id)}>
             重试
           </button>
         )}
-        <button className="text-button" disabled={!canCreateFlow || createFlowPending || message.deliveryState === "sending" || message.deliveryState === "failed"} title={canCreateFlow ? undefined : "当前环境暂不支持协作流程"} onClick={() => onCreateFlow(message.id)}>
-          基于此消息创建协作流程
-        </button>
-      </div>
+        {canCreateFlow && (
+          <button className="text-button" disabled={createFlowPending || message.deliveryState === "sending" || message.deliveryState === "failed"} onClick={() => onCreateFlow(message.id)}>
+            基于此消息创建协作流程
+          </button>
+        )}
+      </div>}
     </article>
   );
 }

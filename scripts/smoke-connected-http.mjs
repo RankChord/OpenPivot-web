@@ -302,12 +302,12 @@ try {
   assert(preAcceptDirectRejected, "direct spaces should require an accepted relationship");
   await workspace.acceptContactRequest(inbox[0].requestId);
 
-  const space = await workspace.createDirectSpace("user-2");
-  assert(space.id === "space-21", "direct collaboration should create a stable backend space");
-  const sent = await workspace.sendMessage(space.id, "Connected HTTP smoke");
-  assert(sent.blocks[0].text === "Connected HTTP smoke", "sent connected message should use content blocks");
-  const messages = await workspace.listMessages(space.id);
-  assert(messages.at(-1)?.id === sent.id, "sent connected message should be readable from the selected space");
+  const directSpace = await workspace.createDirectSpace("user-2");
+  assert(directSpace.id === "conversation-21", "direct collaboration should create a stable backend conversation");
+  const directSent = await workspace.sendMessage(directSpace.id, "Connected HTTP direct smoke");
+  assert(directSent.blocks[0].text === "Connected HTTP direct smoke", "sent direct message should use content blocks");
+  const directMessages = await workspace.listMessages(directSpace.id);
+  assert(directMessages.at(-1)?.id === directSent.id, "sent direct message should be readable from the selected conversation");
   let invalidSpaceRejected = false;
   try {
     await workspace.listMessages("space-999");
@@ -316,6 +316,12 @@ try {
   }
   assert(invalidSpaceRejected, "connected workspace should reject invalid space route ids");
   assert(state.invalidMessageFetches === 0, "invalid space route ids should not reach the backend messages endpoint");
+  const space = await workspace.createSpace({ title: "Connected HTTP smoke space", participantIds: ["user-2"] });
+  assert(space.id === "space-21", "group collaboration should create a stable backend space");
+  const sent = await workspace.sendMessage(space.id, "Connected HTTP smoke");
+  assert(sent.blocks[0].text === "Connected HTTP smoke", "sent connected space message should use content blocks");
+  const messages = await workspace.listMessages(space.id);
+  assert(messages.at(-1)?.id === sent.id, "sent connected space message should be readable from the selected space");
   const flow = await workspace.createFlow({ spaceId: space.id, title: "需求确认流程" });
   assert(flow.spaceId === space.id, "connected flow should bind to the selected backend space");
   const run = await workspace.startFlowRun({ spaceId: space.id, flowId: flow.id, assigneeId: "user-2", taskTitle: "确认需求" });
@@ -332,6 +338,7 @@ try {
     flow: flow.id,
     inboxRequest: inbox[0].requestId,
     ok: true,
+    direct: directSpace.id,
     sentMessage: sent.id,
     space: space.id
   }, null, 2));

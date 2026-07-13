@@ -98,6 +98,7 @@ const { CommandPanel, NewMenu } = loadTsModule("src/app/AppShell.tsx");
 const { default: AppRouter } = loadTsModule("src/app/AppRouter.tsx");
 const { FlowDetailPage, FlowsOverviewPage } = loadTsModule("src/features/flows/FlowPages.tsx");
 const { SettingsPage } = loadTsModule("src/features/settings/SettingsPage.tsx");
+const { ParticipantLink, ParticipantsPage } = loadTsModule("src/features/participants/ParticipantPages.tsx");
 const { CreateSpacePage, SpacesPage, SpaceFlowsPage, SpaceTimelinePage } = loadTsModule("src/features/spaces/SpacePages.tsx");
 const { demoCapabilities, rustCapabilities } = loadTsModule("src/domain/capabilities.ts");
 const { DemoWorkspaceAdapter, resetDemoWorkspace } = loadTsModule("src/domain/demoWorkspaceAdapter.ts");
@@ -116,7 +117,9 @@ function createApp({ capabilities, mode, workspace }) {
     setConnectedTokens: async () => undefined,
     setSession: () => undefined,
     setTheme: () => undefined,
+    setUserProfile: () => undefined,
     theme: "light",
+    userProfile: { displayName: "", avatarUrl: "", bio: "", region: "", identity: "private" },
     workspace,
     workspaceVersion: 0
   };
@@ -155,11 +158,11 @@ let view = renderWithProviders(
     onClose: () => undefined
   })
 );
-const connectedCreateSpace = screen.getByRole("link", { name: "新建协作空间" });
+const connectedCreateSpace = screen.getByRole("link", { name: "创建空间" });
 assert(connectedCreateSpace.getAttribute("href") === "/spaces/new", "Connected new menu must expose real backend space creation");
 assert(!document.body.textContent?.includes("与参与者开始对话"), "New menu must not promise a direct conversation action");
 assert(!document.body.textContent?.includes("建立联系"), "New menu must not expose connection management as daily navigation");
-assert(document.body.textContent?.includes("查找参与者"), "New menu should route users to participant discovery");
+assert(document.body.textContent?.includes("添加好友"), "New menu should route users to participant discovery");
 view.dispose();
 
 view = renderWithProviders(
@@ -169,7 +172,7 @@ view = renderWithProviders(
   })
 );
 assert(!document.querySelector('a[href="/flows/new"]'), "Demo new menu must not expose global flow creation");
-assert(document.querySelector('a[href="/spaces"]')?.textContent?.includes("从空间创建协作流程"), "Demo new menu must route flow creation through spaces");
+assert(document.querySelector('a[href="/spaces"]')?.textContent?.includes("新建空间协作流程"), "Demo new menu must route flow creation through spaces");
 view.dispose();
 
 view = renderWithProviders(
@@ -182,33 +185,69 @@ const commandInput = document.querySelector(".command-input input");
 assert(commandInput?.getAttribute("placeholder") === "搜索协作空间、参与者、协作流程或设置", "Command search placeholder must only advertise supported domains");
 view.dispose();
 
-let savedApiBaseUrl = "";
+let savedProfile = null;
 view = renderWithProviders(
   React.createElement(SettingsPage, {
     app: {
       ...createApp({ capabilities: rustCapabilities, mode: "connected", workspace: connectedWorkspace }),
-      apiBaseUrl: "http://old.example/v1",
-      setApiBaseUrl: (url) => {
-        savedApiBaseUrl = url;
+      session: { status: "authenticated", userId: "user-42", username: "pivot-user", sourceUserId: 42 },
+      setUserProfile: (profile) => {
+        savedProfile = profile;
       }
     }
   })
 );
-assert(screen.getByRole("button", { name: "已保存" }).disabled, "Settings API save must be disabled when the address is unchanged");
-fireEvent.change(screen.getByDisplayValue("http://old.example/v1"), { target: { value: "  http://new.example/v1///  " } });
-const saveApiButton = screen.getByRole("button", { name: "保存" });
-assert(!saveApiButton.disabled, "Settings API save must enable only after the address changes");
-fireEvent.click(saveApiButton);
-assert(savedApiBaseUrl === "http://new.example/v1", "Settings API save must pass a normalized backend address");
+assert(document.body.textContent?.includes("ID pivot-user"), "Profile page must show the registered user id instead of the backend sequence id");
+assert(!document.body.textContent?.includes("Rust 后端地址"), "Profile page must not expose backend address settings");
+assert(!document.body.textContent?.includes("演示数据"), "Profile page must not expose demo mode");
+assert(!screen.queryByLabelText("ID"), "Profile form must not expose editable id settings");
+assert(!document.body.textContent?.includes("主题"), "Profile page must not expose theme settings");
+const saveProfileButton = screen.getByRole("button", { name: "保存资料" });
+assert(saveProfileButton.disabled, "Profile save must be disabled before changes");
+fireEvent.change(screen.getByLabelText("名称"), { target: { value: "北辰" } });
+fireEvent.change(screen.getByLabelText("地区"), { target: { value: "上海" } });
+fireEvent.click(screen.getByRole("button", { name: "更换身份显示" }));
+fireEvent.click(screen.getByRole("tab", { name: /智能体/ }));
+assert(!saveProfileButton.disabled, "Profile save must enable after editing profile fields");
+fireEvent.click(saveProfileButton);
+assert(savedProfile?.displayName === "北辰" && savedProfile?.region === "上海" && savedProfile?.identity === "agent", "Profile save must persist name, region, and identity");
+view.dispose();
+
+localStorage.removeItem("openpivot.web.refreshToken");
+localStorage.setItem("openpivot.web.mode", "connected");
+view = renderWithProviders(React.createElement(AppRouter), { initialEntries: ["/settings"] });
+await screen.findByRole("heading", { name: "欢迎回来" });
+assert(!document.querySelector(".unified-sidebar"), "Anonymous users must not enter the app shell");
+assert(!document.body.textContent?.includes("管理你在 Pivot 协作网络中的公开资料。"), "Anonymous users must not see the profile page");
 view.dispose();
 
 view = renderWithProviders(
-  React.createElement(SettingsPage, {
-    app: createApp({ capabilities: demoCapabilities, mode: "demo", workspace: connectedWorkspace })
+  React.createElement(ParticipantLink, {
+    participant: { id: "me", kind: "human", displayName: "北辰", relationship: "self" }
   })
 );
-const demoLogoutButton = screen.getByRole("button", { name: "无需退出" });
-assert(demoLogoutButton.disabled, "Demo mode must not expose a fake logout action");
+assert(document.body.textContent?.includes("人类"), "Participant row must show disclosed human identity next to the name");
+view.dispose();
+
+resetDemoWorkspace();
+const participantsDemoWorkspace = new DemoWorkspaceAdapter();
+view = renderWithProviders(
+  React.createElement(ParticipantsPage, {
+    app: createApp({ capabilities: demoCapabilities, mode: "demo", workspace: participantsDemoWorkspace })
+  })
+);
+await screen.findByText("全部好友(5)");
+assert(screen.getByRole("button", { name: "添加协作者" }), "Participants page must expose add collaborator from the title bar");
+assert(document.body.textContent?.includes("全部最近协作星标分组"), "Participants page must show the placeholder filter bar");
+assert(document.querySelectorAll(".friend-card").length === 5, "Participants page must list connected collaborators as friend cards");
+assert(!Array.from(document.querySelectorAll(".friend-card")).some((card) => card.textContent?.includes("Mira")), "Friend list must not include pending requests");
+fireEvent.click(await screen.findByRole("tab", { name: "协作申请 1" }));
+await screen.findByText("接收到的待处理好友申请(1)");
+assert(document.body.textContent?.includes("发出的协作申请(0)"), "Request tab must split inbound and outbound requests");
+assert(document.body.textContent?.includes("Mira"), "Request tab must show pending inbound requests");
+fireEvent.click(screen.getByRole("button", { name: "添加协作者" }));
+await screen.findByRole("dialog", { name: "添加协作者" });
+assert(screen.getByLabelText("协作者 ID"), "Add collaborator dialog must search by collaborator id");
 view.dispose();
 
 view = renderWithProviders(
@@ -243,6 +282,7 @@ assert(connectedInput && !connectedInput.disabled, "Create space page must allow
 const createSpaceButton = screen.getByRole("button", { name: "创建并进入空间" });
 assert(createSpaceButton.disabled, "Create space button must wait for a name and connected participant");
 fireEvent.change(screen.getByPlaceholderText("例如：发布协作室"), { target: { value: "UI smoke space" } });
+fireEvent.change(screen.getByPlaceholderText("例如：release-room"), { target: { value: "ui-smoke-space" } });
 fireEvent.click(connectedInput);
 await waitFor(() => assert(!createSpaceButton.disabled, "Create space button must enable for a valid connected participant selection"));
 view.dispose();
@@ -443,7 +483,7 @@ view = renderWithProviders(
 );
 const missingApprovalButton = await screen.findByRole("button", { name: "批准并继续" });
 assert(missingApprovalButton.disabled, "Flow approval button must be disabled without a matching inbox item");
-assert(missingApprovalButton.getAttribute("title")?.includes("当前收件箱没有匹配"), "Disabled flow approval must explain the missing inbox item");
+assert(missingApprovalButton.getAttribute("title")?.includes("当前没有匹配"), "Disabled flow approval must explain the missing approval item");
 view.dispose();
 
 let missingSpaceFlowDetailLoaded = false;
@@ -477,7 +517,7 @@ resetDemoWorkspace();
 localStorage.setItem("openpivot.web.mode", "demo");
 localStorage.setItem("openpivot.web.theme", "light");
 view = renderWithProviders(React.createElement(AppRouter), { initialEntries: ["/participants/me"] });
-const selfDirectButton = await screen.findByRole("button", { name: "开始一对一协作空间" });
+const selfDirectButton = await screen.findByRole("button", { name: "发起聊天" });
 const selfProfile = document.querySelector(".profile-static");
 assert(selfDirectButton.disabled, "Participant self profile must not allow direct space creation");
 assert(!selfProfile?.textContent?.includes("建立联系"), "Participant self profile must not offer a contact request");
@@ -507,7 +547,7 @@ resetDemoWorkspace();
 localStorage.setItem("openpivot.web.mode", "demo");
 localStorage.setItem("openpivot.web.theme", "light");
 view = renderWithProviders(React.createElement(AppRouter), { initialEntries: ["/messages?chat=missing"] });
-await waitFor(() => assert(!!document.querySelector('a[href="/inbox"][aria-current="page"]'), "Unknown legacy chat routes must return to inbox"));
+await waitFor(() => assert(!!document.querySelector('a[href="/spaces"][aria-current="page"]'), "Unknown legacy chat routes must return to spaces"));
 assert(!document.querySelector(".message-column"), "Unknown legacy chat routes must not fall through to a space timeline");
 view.dispose();
 
@@ -653,18 +693,21 @@ resetDemoWorkspace();
 localStorage.setItem("openpivot.web.mode", "demo");
 localStorage.setItem("openpivot.web.theme", "light");
 view = renderWithProviders(React.createElement(AppRouter), { initialEntries: ["/inbox"] });
+await screen.findByRole("heading", { name: "协作空间" });
+assert(!document.body.textContent?.includes("收件箱"), "Legacy inbox route must redirect to collaboration spaces");
+view.dispose();
 
-await screen.findByText("陈默等待你确认协议变更");
-assert(document.querySelector('a[href="/participants/mira"]'), "Inbox contact request must link to participant context");
-assert(document.querySelector('a[href="/spaces/core#core-4"]'), "Inbox mention must link to the exact message context");
-clickHref("/participants/mira");
+resetDemoWorkspace();
+localStorage.setItem("openpivot.web.mode", "demo");
+localStorage.setItem("openpivot.web.theme", "light");
+view = renderWithProviders(React.createElement(AppRouter), { initialEntries: ["/participants/mira"] });
 await screen.findByText("Mira");
 const pendingProfile = document.querySelector(".profile-static");
-assert(pendingProfile?.textContent?.includes("请先处理联系请求"), "Pending inbound participant profile must point back to inbox handling");
+assert(pendingProfile?.textContent?.includes("请先处理联系请求"), "Pending inbound participant profile must explain contact request handling");
 assert(!Array.from(pendingProfile?.querySelectorAll("button") || []).some((button) => button.textContent?.trim() === "建立联系"), "Pending inbound participant profile must not offer a duplicate contact request");
-clickHref("/inbox");
-await screen.findByText("陈默等待你确认协议变更");
-clickHref("/spaces/core#core-4");
+view.dispose();
+
+view = renderWithProviders(React.createElement(AppRouter), { initialEntries: ["/spaces/core#core-4"] });
 await screen.findByPlaceholderText("给 OpenPivot 核心开发 发送消息...");
 await waitFor(() => assert(document.getElementById("core-4")?.getAttribute("data-message-id") === "core-4", "Message context links must have matching DOM anchors"));
 await waitFor(() => assert(document.getElementById("core-4")?.getAttribute("data-scrolled-into-view") === "true", "Message context links must scroll to the target after async load"));
@@ -692,10 +735,32 @@ await screen.findByText(messageText);
 clickLastButtonByText("基于此消息创建协作流程");
 await screen.findByText("基于消息的新流程");
 
-clickHref("/inbox");
-await screen.findByText("陈默等待你确认协议变更");
-fireEvent.click(screen.getByRole("button", { name: "批准" }));
-await waitFor(() => assert(!document.body.textContent?.includes("陈默等待你确认协议变更"), "Approval should leave the inbox after processing"));
+view.dispose();
+view = renderWithProviders(React.createElement(AppRouter), { initialEntries: ["/spaces/core/flows/dev-flow"] });
+await waitFor(() => assert(document.querySelector(".workflow-canvas-panel"), "Flow detail should render the workflow designer"));
+const workflowPanel = document.querySelector(".workflow-canvas-panel");
+const startRightPort = workflowPanel?.querySelector('[data-node-id="start"] [data-port="right"]');
+const endLeftPort = workflowPanel?.querySelector('[data-node-id="end"] [data-port="left"]');
+assert(startRightPort && endLeftPort, "Workflow nodes should expose connection ports");
+fireEvent.pointerDown(startRightPort, { clientX: 414, clientY: 374, pointerId: 1 });
+assert(workflowPanel.querySelector(".flow-lines path.draft"), "Starting a connection should show one draft line");
+fireEvent.pointerDown(endLeftPort, { clientX: 906, clientY: 374, pointerId: 2 });
+assert(!workflowPanel.querySelector(".flow-lines path.draft"), "Completing a connection should clear the draft line");
+const firstPaletteNode = workflowPanel.querySelector(".node-floating-palette button");
+assert(firstPaletteNode, "Workflow designer should expose node palette actions");
+fireEvent.click(firstPaletteNode);
+const addedNode = workflowPanel.querySelector('[data-node-id^="node-"]');
+const addedNodeLeftPort = addedNode?.querySelector('[data-port="left"]');
+assert(addedNodeLeftPort, "Added workflow node should expose connection ports");
+fireEvent.pointerDown(endLeftPort, { pointerId: 3 });
+assert(workflowPanel.querySelector(".flow-lines path.draft"), "Clicking the target endpoint should start target reconnection");
+fireEvent.pointerDown(addedNodeLeftPort, { pointerId: 4 });
+assert(!workflowPanel.querySelector(".flow-lines path.draft"), "Completing a target reconnection should clear the draft line");
+const renderedEdgePaths = Array.from(workflowPanel.querySelectorAll(".flow-lines path:not(.draft)")).map((path) => path.getAttribute("d") || "");
+assert(renderedEdgePaths.some((path) => path.includes("424 270")), "Clicking the target endpoint should reconnect the existing edge target from the source node");
+await screen.findByText("开发协作");
+fireEvent.click(screen.getByRole("button", { name: "批准并继续" }));
+await waitFor(() => assert(!document.body.textContent?.includes("请求陈默验收"), "Approval should update the collaboration flow after processing"));
 clickHref("/spaces/core");
 await screen.findByText("人工审批已通过，流程已写回协作空间。");
 view.dispose();
@@ -707,23 +772,26 @@ console.log(JSON.stringify({
     "new-menu-uses-participant-discovery-language",
     "new-menu-routes-flow-creation-through-spaces",
     "command-search-only-advertises-supported-domains",
-    "settings-api-save-is-stateful",
-    "demo-settings-hides-fake-logout",
+    "profile-page-saves-public-profile",
+    "participant-row-shows-disclosed-identity",
     "connected-spaces-empty-state-guides-to-space-creation",
     "create-space-requires-connected-participants",
     "space-flow-create-binds-current-space",
     "connected-flow-run-start-complete-actions",
+    "workflow-designer-clears-draft-after-port-connect",
+    "workflow-designer-reconnects-target-from-target-port",
     "flow-detail-approval-requires-matching-inbox-item",
     "flow-detail-requires-real-space-context",
     "participant-self-profile-disables-direct-space",
-    "legacy-unknown-chat-returns-to-inbox",
+    "legacy-unknown-chat-returns-to-spaces",
     "missing-space-timeline-does-not-load-messages",
     "timeline-actions-use-resolved-space-context",
     "missing-space-subroutes-stop-false-context",
-    "inbox-message-context-links-have-anchors",
-    "inbox-message-context-scrolls-after-load",
-    "inbox-contact-request-links-to-participant",
-    "demo-app-inbox-space-send-participants-flow-approval",
+    "legacy-inbox-redirects-to-spaces",
+    "space-message-context-links-have-anchors",
+    "space-message-context-scrolls-after-load",
+    "participant-contact-request-state-is-explained",
+    "demo-app-space-send-participants-flow-approval",
     "demo-failed-message-retry",
     "connected-flow-overview-uses-real-empty-state"
   ]

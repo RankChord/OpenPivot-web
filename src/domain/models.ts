@@ -7,27 +7,46 @@ export type DeliveryState = "sending" | "sent" | "failed";
 export interface Participant {
   id: string;
   sourceId?: number;
+  displayId?: string;
   kind: ParticipantKind;
   displayName: string;
+  avatarUrl?: string;
   handle?: string;
   title?: string;
   description?: string;
+  region?: string;
   connectionLabel?: string;
+  addedAt?: string;
   relationship: "self" | "connected" | "pending_inbound" | "pending_outbound" | "none";
+}
+
+export type IdentityDisclosure = "human" | "agent" | "private";
+
+export interface UserProfile {
+  displayName: string;
+  avatarUrl: string;
+  bio: string;
+  region: string;
+  identity: IdentityDisclosure;
 }
 
 export interface CollaborationSpace {
   id: string;
   sourceSpaceId?: number;
   sourceConversationId?: number;
+  displayId?: string;
   kind: SpaceKind;
   title: string;
+  avatarUrl?: string;
   participantIds: string[];
   pinned?: boolean;
   unreadCount?: number;
   lastActivityAt?: string;
   lastPreview?: string;
   hasActiveFlow?: boolean;
+  description?: string;
+  announcement?: string;
+  announcementHistory?: string[];
 }
 
 export type MessageBlock =
@@ -117,6 +136,7 @@ export interface ContactRequest {
   sourceId?: number;
   participant: Participant;
   message?: string | null;
+  createdAt?: string;
   status: "pending" | "accepted" | "rejected" | "canceled";
 }
 

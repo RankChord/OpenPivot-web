@@ -8,13 +8,22 @@ export function blockText(block: MessageBlock) {
   return `引用 ${block.messageId}`;
 }
 
-export function shortDate(value?: string) {
-  if (!value) return "暂无动态";
-  return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+function safeDate(value?: string | null): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
-export function shortTime(value: string) {
-  return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+export function shortDate(value?: string | null) {
+  const date = safeDate(value);
+  if (!date) return "暂无动态";
+  return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(date);
+}
+
+export function shortTime(value?: string | null) {
+  const date = safeDate(value);
+  if (!date) return "刚刚";
+  return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(date);
 }
 
 export function deliveryLabel(state?: SpaceMessage["deliveryState"]) {

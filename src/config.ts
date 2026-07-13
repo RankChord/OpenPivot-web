@@ -5,7 +5,6 @@ export function defaultApiBaseUrl(): string {
 }
 
 export const APP_COPY = {
-  connectedOnlyNotice: "真实后端模式只展示当前 Rust 后端已经实现的能力。",
-  demoLabel: "概念预览 · 演示数据",
+  connectedOnlyNotice: "当前界面只展示真实后端已经实现的能力。",
   previewOnly: "仅作预览 · 执行引擎未接入"
 };

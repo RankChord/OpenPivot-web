@@ -18,6 +18,7 @@ export interface FriendRequest {
   addressee_id: number;
   status: "pending" | "accepted" | "rejected" | "canceled" | string;
   message: string | null;
+  created_at?: string;
 }
 
 export interface Conversation {
@@ -31,13 +32,17 @@ export interface Message {
   id: number;
   conversation_id: number;
   sender_id: number;
-  content: string;
-  created_at: string;
+  content: unknown;
+  created_at?: string | null;
 }
 
 export interface SpaceResponse {
   id: number;
   name: string;
+  display_id?: string | null;
+  avatar_url?: string | null;
+  description?: string | null;
+  announcement?: string | null;
   space_type?: "group" | "workflow" | string;
   type?: "group" | "workflow" | string;
   owner_id: number;
@@ -54,8 +59,8 @@ export interface SpaceProtocolMessage {
   id: number;
   space_id: number;
   sender_id: number;
-  content: string;
-  created_at: string;
+  content: unknown;
+  created_at?: string | null;
 }
 
 export interface FlowResponse {

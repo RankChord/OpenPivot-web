@@ -4,6 +4,7 @@ import type { AuthTokens, ProductMode } from "../types";
 import type {
   CollaborationFlow,
   SessionState,
+  UserProfile,
   WorkspaceEnvironment
 } from "../domain/models";
 import type { WorkspaceAdapter } from "../domain/workspaceAdapter";
@@ -19,6 +20,8 @@ export interface AppContextValue {
   setApiBaseUrl: (url: string) => void;
   session: SessionState;
   setSession: (session: SessionState) => void;
+  userProfile: UserProfile;
+  setUserProfile: (profile: UserProfile) => void;
   workspaceVersion: number;
   refreshWorkspace: () => void;
   workspace: WorkspaceAdapter | null;

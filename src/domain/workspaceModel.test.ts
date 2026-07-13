@@ -3,7 +3,7 @@ import { demoCapabilities, rustCapabilities, unavailableReason } from "./capabil
 import { ConnectedWorkspaceAdapter } from "./connectedWorkspaceAdapter";
 import { DemoWorkspaceAdapter, resetDemoWorkspace } from "./demoWorkspaceAdapter";
 import type { RustHttpAdapter } from "../adapters/rustHttpAdapter";
-import type { FlowResponse, SpaceMemberResponse, SpaceProtocolMessage, SpaceResponse, UserSummary } from "../types";
+import type { Conversation, FlowResponse, Message, SpaceMemberResponse, SpaceProtocolMessage, SpaceResponse, UserSummary } from "../types";
 
 function connectedStub() {
   const spaces: SpaceResponse[] = [
@@ -19,10 +19,30 @@ function connectedStub() {
   const messages: SpaceProtocolMessage[] = [
     { id: 11, space_id: 7, sender_id: 2, content: "hello", created_at: "2026-06-22T10:00:00Z" }
   ];
+  const conversations: Conversation[] = [];
+  const conversationMessages: Message[] = [];
   const flows: FlowResponse[] = [];
   return {
     listFriends: vi.fn(async () => friends),
     listSpaces: vi.fn(async () => spaces),
+    listConversations: vi.fn(async () => conversations),
+    createDirectConversation: vi.fn(async (userId: number) => {
+      const conversation: Conversation = { id: 21, conversation_type: "direct", user_low_id: 1, user_high_id: userId };
+      conversations.push(conversation);
+      return conversation;
+    }),
+    listMessages: vi.fn(async () => conversationMessages),
+    sendMessage: vi.fn(async (conversationId: number, content: string) => {
+      const message = {
+        id: 41,
+        conversation_id: conversationId,
+        sender_id: 1,
+        content,
+        created_at: "2026-06-22T10:02:00Z"
+      };
+      conversationMessages.push(message);
+      return message;
+    }),
     listSpaceMembers: vi.fn(async () => members),
     listSpaceMessages: vi.fn(async () => messages),
     createSpaceMessage: vi.fn(async (spaceId: number, content: string) => ({
@@ -64,6 +84,30 @@ describe("workspace domain model", () => {
       title: "Bob 协作空间",
       participantIds: ["user-1", "user-2"]
     });
+  });
+
+  it("normalizes backend messages before rendering can receive them", async () => {
+    const adapter = new ConnectedWorkspaceAdapter({
+      ...connectedStub(),
+      listConversations: vi.fn(async () => [{ id: 21, conversation_type: "direct", user_low_id: 1, user_high_id: 2 }]),
+      listMessages: vi.fn(async () => [
+        { id: 41, conversation_id: 21, sender_id: 2, content: { body: ["hello", "structured"] }, created_at: null }
+      ]),
+      listSpaceMessages: vi.fn(async () => [
+        { id: 14, space_id: 7, sender_id: 2, content: { text: "space structured" }, created_at: undefined }
+      ])
+    } as unknown as RustHttpAdapter, 1);
+
+    const [spaceMessage] = await adapter.listMessages("space-7");
+    const [directMessage] = await adapter.listMessages("conversation-21");
+    const spaces = await adapter.listSpaces();
+
+    expect(spaceMessage.blocks[0]).toMatchObject({ type: "text", text: "space structured" });
+    expect(spaceMessage.createdAt).toEqual(expect.any(String));
+    expect(directMessage.blocks[0]).toMatchObject({ type: "text", text: "hello\nstructured" });
+    expect(directMessage.createdAt).toEqual(expect.any(String));
+    expect(spaces.find((space) => space.id === "space-7")?.lastPreview).toBe("space structured");
+    expect(spaces.find((space) => space.id === "conversation-21")?.lastPreview).toBe("hello\nstructured");
   });
 
   it("uses the same message model regardless of sender kind", async () => {

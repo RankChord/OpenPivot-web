@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ChevronRight, Megaphone, Plus } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate, useParams } from "react-router-dom";
 import type { AppContextValue } from "../../app/AppContext";
 import { invalidateWorkspaceQueries } from "../../app/AppContext";
@@ -20,11 +20,17 @@ export function SpacesPage({ app }: { app: AppContextValue }) {
     queryFn: () => app.workspace!.listSpaces(),
     enabled: !!app.workspace
   });
+  const participantsQuery = useQuery({
+    queryKey: ["workspace", app.mode, app.session, "participants"],
+    queryFn: () => app.workspace!.listParticipants(),
+    enabled: !!app.workspace
+  });
   const spaces = spacesQuery.data || [];
+  const participants = participantsQuery.data || [];
   const groupReason = unavailableReason("groupSpaces", app.environment.capabilities);
   const createAction = groupReason
     ? <Link className="quiet-button" to="/participants">查找参与者</Link>
-    : <Link className="quiet-button" to="/spaces/new"><Plus size={16} />新建</Link>;
+    : <Link className="quiet-button" to="/spaces/new"><Plus size={16} />创建空间</Link>;
   const emptyAction = groupReason
     ? <Link className="primary-button" to="/participants">查找参与者</Link>
     : <Link className="primary-button" to="/spaces/new">创建协作空间</Link>;
@@ -37,7 +43,7 @@ export function SpacesPage({ app }: { app: AppContextValue }) {
         <div className="conversation-list">
           {spaces.map((space) => (
             <Link key={space.id} className="conversation-home-row" to={`/spaces/${space.id}`}>
-              <ActorAvatar id={space.participantIds[1] || space.id} size="md" />
+              <ActorAvatar id={space.id} size="md" src={space.avatarUrl || spaceAvatarParticipant(space, participants, app.environment.currentUserId)?.avatarUrl} alt={space.title} />
               <span>
                 <strong>{space.title}</strong>
                 <small>{space.kind === "direct" ? "一对一协作空间" : `${space.participantIds.length} 位参与者`}</small>
@@ -57,6 +63,7 @@ export function CreateSpacePage({ app }: { app: AppContextValue }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [title, setTitle] = useState("");
+  const [displayId, setDisplayId] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const participantsQuery = useQuery({
     queryKey: ["workspace", app.mode, app.session, "participants"],
@@ -66,7 +73,7 @@ export function CreateSpacePage({ app }: { app: AppContextValue }) {
   const create = useMutation({
     mutationFn: async () => {
       if (!app.workspace?.createSpace) throw new Error(unavailableReason("groupSpaces", app.environment.capabilities) || "当前环境不能创建多人协作空间");
-      return app.workspace.createSpace({ title, participantIds: selected });
+      return app.workspace.createSpace({ title, displayId: supportsCustomSpaceId ? displayId : undefined, participantIds: selected });
     },
     onSuccess: async (space) => {
       app.refreshWorkspace();
@@ -75,8 +82,10 @@ export function CreateSpacePage({ app }: { app: AppContextValue }) {
     }
   });
   const reason = unavailableReason("groupSpaces", app.environment.capabilities);
-  const canSubmit = !reason && !!title.trim() && selected.length > 0 && !create.isPending;
-  const submitReason = reason || (!title.trim() ? "请填写协作空间名称" : !selected.length ? "请至少选择一位已建立联系的参与者" : undefined);
+  const supportsCustomSpaceId = app.mode === "demo";
+  const spaceIdReady = !supportsCustomSpaceId || !!displayId.trim();
+  const canSubmit = !reason && !!title.trim() && spaceIdReady && selected.length > 0 && !create.isPending;
+  const submitReason = reason || (!title.trim() ? "请填写协作空间名称" : !spaceIdReady ? "请填写创建后不可更改的空间 ID" : !selected.length ? "请至少选择一位已建立联系的参与者" : undefined);
   return (
     <section className="center-page page-fade">
       <div className="main-column narrow">
@@ -90,6 +99,16 @@ export function CreateSpacePage({ app }: { app: AppContextValue }) {
             <span>空间名称</span>
             <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：发布协作室" disabled={!!reason} />
           </label>
+          <label>
+            <span>空间 ID</span>
+            <input
+              value={displayId}
+              onChange={(event) => setDisplayId(event.target.value)}
+              placeholder={supportsCustomSpaceId ? "例如：release-room" : "当前后端未接入自定义空间 ID"}
+              disabled={!!reason || !supportsCustomSpaceId}
+            />
+            <small>{supportsCustomSpaceId ? "创建后不可更改，仅支持字母、数字、下划线和短横线。" : "需要后端在创建空间接口中增加不可变的公开空间 ID 字段。"}</small>
+          </label>
           <section className="participant-picker">
             <h2>参与者</h2>
             {(participantsQuery.data || []).filter((participant) => participant.relationship !== "self").map((participant) => {
@@ -100,7 +119,7 @@ export function CreateSpacePage({ app }: { app: AppContextValue }) {
                   <input type="checkbox" checked={checked} disabled={unavailable} title={participant.relationship === "connected" ? undefined : relationshipLabel(participant.relationship)} onChange={(event) => {
                     setSelected((current) => event.target.checked ? [...current, participant.id] : current.filter((id) => id !== participant.id));
                   }} />
-                  <ActorAvatar id={participant.id} size="sm" />
+                  <ActorAvatar id={participant.id} size="sm" src={participant.avatarUrl} alt={participant.displayName} />
                   <span><strong>{participant.displayName}</strong><small>{participant.relationship === "connected" ? participant.title || participant.handle : relationshipLabel(participant.relationship)}</small></span>
                 </label>
               );
@@ -203,27 +222,30 @@ export function SpaceTimelinePage({ app }: { app: AppContextValue }) {
   }, [location.hash, messages.length, messagesQuery.isLoading, spaceId]);
   if (spaceQuery.isLoading) return <InlinePage title="正在打开协作空间" />;
   if (!space) return <InlinePage title="没有找到协作空间" detail="这个空间不存在，或当前环境没有权限访问。" action={<Link className="primary-button" to="/spaces">返回空间列表</Link>} />;
+  const isDirectChat = !!space.sourceConversationId;
 
   return (
-    <section className="chat-canvas page-fade">
+    <section className={clsx("chat-canvas page-fade", isDirectChat && "direct-chat")}>
       <SpaceHeader space={space} participants={participants} />
+      {!isDirectChat && <SpaceInfoPanel space={space} participants={participants} app={app} />}
       <div className="message-column">
         {messages.map((message) => (
           <MessageView
             key={message.id}
             message={message}
             participants={participants}
-            canCreateFlow={app.environment.capabilities.collaborationFlows}
+            currentUserId={app.environment.currentUserId}
+            canCreateFlow={app.environment.capabilities.collaborationFlows && !isDirectChat}
             onCreateFlow={(messageId) => createFlow.mutate(messageId)}
             createFlowPending={createFlow.isPending}
             onRetryMessage={app.workspace?.retryMessage ? (messageId) => retryMutation.mutate(messageId) : undefined}
             retryPending={retryMutation.isPending}
           />
         ))}
-        {!messages.length && <EmptyState title="还没有消息" detail="发送第一条消息开始协作。" />}
+        {!messages.length && <EmptyState title="还没有消息" detail={isDirectChat ? "发送第一条消息开始聊天。" : "发送第一条消息开始协作。"} />}
       </div>
       <Composer
-        placeholder={`给 ${space.title} 发送消息...`}
+        placeholder={`${isDirectChat ? "给" : "给"} ${space.title} 发送消息...`}
         sending={sendMutation.isPending}
         onSend={(text) => sendMutation.mutate({ text, clientId: `local-${Date.now()}` })}
         capabilities={app.environment.capabilities}
@@ -234,19 +256,142 @@ export function SpaceTimelinePage({ app }: { app: AppContextValue }) {
 
 export function SpaceHeader({ space, participants }: { space: CollaborationSpace; participants: Participant[] }) {
   const spaceParticipants = participants.filter((participant) => space.participantIds.includes(participant.id));
+  const isDirectChat = !!space.sourceConversationId;
   return (
     <header className="chat-header space-header">
       <Link className="mobile-back-link" to="/spaces">返回</Link>
-      <div>
-        <h1>{space.title}</h1>
-        <p>{space.kind === "direct" ? directSubtitle(spaceParticipants) : `${spaceParticipants.length} 位参与者`}{space.hasActiveFlow ? " · 有协作流程运行" : ""}</p>
+      <div className="space-header-title">
+        {!isDirectChat && <ActorAvatar id={space.id} size="md" src={space.avatarUrl} alt={space.title} />}
+        <span>
+          <h1>{space.title}</h1>
+          <p>{isDirectChat ? "私聊" : space.kind === "direct" ? directSubtitle(spaceParticipants) : `${spaceParticipants.length} 位参与者`}{!isDirectChat && space.hasActiveFlow ? " · 有协作流程运行" : ""}</p>
+        </span>
       </div>
-      <nav className="space-tabs">
+      {!isDirectChat && <nav className="space-tabs">
         <NavLink to={`/spaces/${space.id}`}>对话</NavLink>
         <NavLink to={`/spaces/${space.id}/participants`}>参与者</NavLink>
         <NavLink to={`/spaces/${space.id}/flows`}>协作流程</NavLink>
-      </nav>
+      </nav>}
     </header>
+  );
+}
+
+export function SpaceInfoPanel({ space, participants, app }: { space: CollaborationSpace; participants: Participant[]; app: AppContextValue }) {
+  const queryClient = useQueryClient();
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({ title: space.title, avatarUrl: space.avatarUrl || "" });
+  const spaceParticipants = participants.filter((participant) => space.participantIds.includes(participant.id));
+  const visibleMembers = spaceParticipants.slice(0, 8);
+  const history = space.announcementHistory || [];
+  const canEditSpace = !!app.workspace?.updateSpace;
+  const editUnavailableReason = "当前后端还没有接入空间名称和头像更新接口。";
+  const updateSpace = useMutation({
+    mutationFn: async () => {
+      if (!app.workspace?.updateSpace) throw new Error(editUnavailableReason);
+      return app.workspace.updateSpace(space.id, draft);
+    },
+    onSuccess: async () => {
+      setEditing(false);
+      app.refreshWorkspace();
+      await invalidateWorkspaceQueries(queryClient, app.mode);
+    }
+  });
+
+  useEffect(() => {
+    setDraft({ title: space.title, avatarUrl: space.avatarUrl || "" });
+  }, [space.id, space.title, space.avatarUrl]);
+
+  function readSpaceAvatar(file?: File) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      if (typeof reader.result === "string") setDraft((current) => ({ ...current, avatarUrl: reader.result as string }));
+    });
+    reader.readAsDataURL(file);
+  }
+
+  return (
+    <section className="space-info-panel">
+      <div className="space-info-main">
+        <span>
+          <small>空间头像</small>
+          <ActorAvatar id={space.id} size="md" src={space.avatarUrl} alt={space.title} />
+        </span>
+        <span>
+          <small>空间名称</small>
+          <strong>{space.title}</strong>
+        </span>
+        <span>
+          <small>{space.sourceConversationId ? "对话 ID" : "空间 ID"}</small>
+          <strong>{space.displayId || (space.sourceConversationId ? String(space.sourceConversationId) : "后端未返回公开空间 ID")}</strong>
+        </span>
+        <button className="quiet-button" type="button" disabled={!canEditSpace} title={canEditSpace ? undefined : editUnavailableReason} onClick={() => setEditing((open) => !open)}>
+          编辑资料
+        </button>
+        <span className="space-info-wide">
+          <small>空间介绍</small>
+          <p>{space.description || "这个空间还没有填写介绍。"}</p>
+        </span>
+      </div>
+
+      {editing && (
+        <form className="space-profile-editor" onSubmit={(event) => {
+          event.preventDefault();
+          updateSpace.mutate();
+        }}>
+          <button className="avatar-edit-button" type="button" onClick={() => avatarInputRef.current?.click()} aria-label="更换空间头像">
+            <ActorAvatar id={space.id} size="md" src={draft.avatarUrl} alt={draft.title} />
+          </button>
+          <input ref={avatarInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(event) => readSpaceAvatar(event.target.files?.[0])} />
+          <label>
+            <span>空间名称</span>
+            <input value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} />
+          </label>
+          <span>
+            <small>空间 ID 创建后不可更改</small>
+            <strong>{space.displayId || "当前后端未接入公开空间 ID"}</strong>
+          </span>
+          <button className="primary-button" disabled={!draft.title.trim() || updateSpace.isPending}>保存空间资料</button>
+          {updateSpace.error && <p className="form-error">{(updateSpace.error as Error).message}</p>}
+        </form>
+      )}
+
+      <div className="space-announcement">
+        <span>
+          <Megaphone size={15} />
+          <strong>空间公告</strong>
+        </span>
+        <p>{space.announcement || "暂无公告"}</p>
+        <button type="button" onClick={() => setHistoryOpen((open) => !open)} aria-expanded={historyOpen}>
+          历史公告
+          <ChevronRight size={14} />
+        </button>
+        {historyOpen && (
+          <div className="announcement-history">
+            {history.map((item, index) => <p key={`${space.id}-announcement-${index}`}>{item}</p>)}
+            {!history.length && <p className="muted">暂无历史公告。</p>}
+          </div>
+        )}
+      </div>
+
+      <div className="space-member-strip">
+        <span>
+          <strong>协作成员</strong>
+          <small>{space.participantIds.length} 位</small>
+        </span>
+        <div>
+          {visibleMembers.map((participant) => (
+            <Link key={participant.id} to={`/participants/${participant.id}`} title={participant.displayName}>
+              <ActorAvatar id={participant.id} size="sm" src={participant.avatarUrl} alt={participant.displayName} />
+              <small>{participant.displayName}</small>
+            </Link>
+          ))}
+          {!visibleMembers.length && <small className="muted">成员信息加载中</small>}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -320,4 +465,10 @@ export function SpaceFlowsPage({ app }: { app: AppContextValue }) {
       </div>
     </section>
   );
+}
+
+function spaceAvatarParticipant(space: CollaborationSpace, participants: Participant[], currentUserId: string) {
+  if (space.kind !== "direct") return undefined;
+  const peerId = space.participantIds.find((participantId) => participantId !== currentUserId);
+  return participants.find((participant) => participant.id === peerId);
 }

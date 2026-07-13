@@ -98,6 +98,8 @@ assert(inviteEvent?.kind === "system_event", "Inviting a participant must write 
 assert(inviteEvent?.blocks?.[0]?.type === "text", "Invite timeline event must render through message blocks");
 
 const rustState = {
+  conversationMessages: {},
+  conversations: [],
   flows: {
     9: [{ id: 7, space_id: 9, name: "Existing flow", description: "existing trigger", created_by: 1 }]
   },
@@ -120,6 +122,14 @@ const rustState = {
 const rust = {
   acceptFriendRequest: async () => ({ id: 3, requester_id: 2, addressee_id: 1, status: "accepted", message: "hello" }),
   createFriendRequest: async ({ userId, message }) => ({ id: 3, requester_id: 1, addressee_id: userId, status: "pending", message: message ?? null }),
+  createDirectConversation: async (userId) => {
+    const existing = rustState.conversations.find((conversation) => conversation.user_high_id === userId || conversation.user_low_id === userId);
+    if (existing) return existing;
+    const conversation = { id: 21 + rustState.conversations.length, conversation_type: "direct", user_low_id: 1, user_high_id: userId };
+    rustState.conversations.push(conversation);
+    rustState.conversationMessages[conversation.id] = [];
+    return conversation;
+  },
   createFlow: async (spaceId, input) => {
     const flow = { id: rustState.nextFlowId++, space_id: spaceId, name: input.name, description: input.description ?? null, created_by: 1 };
     rustState.flows[spaceId] = [...(rustState.flows[spaceId] || []), flow];
@@ -145,8 +155,10 @@ const rust = {
   },
   completeFlowTask: async (taskId) => ({ task_id: taskId, run_id: 31, status: "completed" }),
   listFlows: async (spaceId) => rustState.flows[spaceId] || [],
+  listConversations: async () => rustState.conversations,
   listFriendRequests: async () => [{ id: 4, requester_id: 4, addressee_id: 1, status: "pending", message: "please connect" }],
   listFriends: async () => [{ id: 2, username: "bob", nickname: "Bob" }],
+  listMessages: async (conversationId) => rustState.conversationMessages[conversationId] || [],
   listSpaceMembers: async (spaceId) => rustState.members[spaceId] || [],
   listSpaceMessages: async (spaceId) => rustState.messages[spaceId] || [],
   listSpaces: async () => rustState.spaces,
@@ -154,6 +166,11 @@ const rust = {
   searchUsers: async (query) => query === "carol" || query === "3"
     ? [{ id: 3, username: "carol", nickname: "Carol" }]
     : [{ id: 2, username: "bob", nickname: "Bob" }],
+  sendMessage: async (conversationId, content) => {
+    const message = { id: (rustState.conversationMessages[conversationId] || []).length + 1, conversation_id: conversationId, sender_id: 1, content, created_at: "2026-06-23T00:03:00Z" };
+    rustState.conversationMessages[conversationId] = [...(rustState.conversationMessages[conversationId] || []), message];
+    return message;
+  },
   startFlowRun: async () => ({ run_id: 31, task_id: 32, status: "waiting_action" })
 };
 
@@ -215,8 +232,10 @@ const sent = await connected.sendMessage("space-9", "connected smoke");
 assert(sent.spaceId === "space-9", "Connected send must map the backend message into the current space");
 assert(sent.blocks[0].text === "connected smoke", "Connected sent text must render through message blocks");
 const directSpace = await connected.createDirectSpace("user-2");
-assert(directSpace.id.startsWith("space-"), "Connected direct collaboration must create a real backend space");
-assert(directSpace.participantIds.includes("user-2"), "Connected direct collaboration must add the selected participant as a space member");
+assert(directSpace.id === "conversation-21", "Connected direct collaboration must create a backend direct conversation");
+assert(directSpace.participantIds.includes("user-2"), "Connected direct collaboration must include the selected participant");
+const directMessage = await connected.sendMessage(directSpace.id, "direct smoke");
+assert(directMessage.spaceId === directSpace.id, "Connected direct send must stay in the conversation route");
 const connectedFlow = await connected.createFlow({ spaceId: "space-9", title: "需求确认流程" });
 assert(connectedFlow.spaceId === "space-9", "Connected flow creation must bind to the real backend space");
 const listedFlows = await connected.listFlows("space-9");

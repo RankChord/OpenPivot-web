@@ -1,5 +1,5 @@
 import type { RustHttpAdapter } from "../adapters/rustHttpAdapter";
-import type { FlowResponse, FriendRequest, SpaceProtocolMessage, SpaceResponse, UserSummary } from "../types";
+import type { Conversation, FlowResponse, FriendRequest, Message, SpaceProtocolMessage, SpaceResponse, UserSummary } from "../types";
 import type {
   CollaborationFlow,
   CollaborationSpace,
@@ -8,7 +8,8 @@ import type {
   FlowTaskCompleteResult,
   InboxItem,
   Participant,
-  SpaceMessage
+  SpaceMessage,
+  UserProfile
 } from "./models";
 import type { WorkspaceAdapter } from "./workspaceAdapter";
 
@@ -18,6 +19,10 @@ function participantIdFromSource(sourceId: number): string {
 
 function spaceIdFromSource(sourceId: number): string {
   return `space-${sourceId}`;
+}
+
+function conversationIdFromSource(sourceId: number): string {
+  return `conversation-${sourceId}`;
 }
 
 function flowIdFromSource(sourceId: number): string {
@@ -31,10 +36,17 @@ function sourceIdFromRoute(id: string, prefix: string): number {
   return sourceId;
 }
 
+function profileIdentityKind(identity: UserProfile["identity"] | undefined): Participant["kind"] {
+  if (identity === "human") return "human";
+  if (identity === "agent") return "agent";
+  return "unknown";
+}
+
 function userParticipant(user: UserSummary, relationship: Participant["relationship"] = "connected"): Participant {
   return {
     id: participantIdFromSource(user.id),
     sourceId: user.id,
+    displayId: user.username,
     kind: "unknown",
     displayName: user.nickname || user.username,
     handle: `@${user.username}`,
@@ -68,6 +80,7 @@ function requestToContactRequest(request: FriendRequest, currentUserId: number):
       description: "来自真实后端的联系请求。"
     },
     message: request.message,
+    createdAt: request.created_at,
     status: request.status as ContactRequest["status"]
   };
 }
@@ -76,16 +89,59 @@ function spaceType(space: SpaceResponse): string {
   return space.space_type || space.type || "group";
 }
 
+function backendMessageText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (typeof content === "number" || typeof content === "boolean") return String(content);
+  if (content == null) return "";
+  if (Array.isArray(content)) return content.map(backendMessageText).filter(Boolean).join("\n");
+  if (typeof content === "object") {
+    const record = content as Record<string, unknown>;
+    const preferred = ["text", "content", "message", "body", "source", "markdown"]
+      .map((key) => record[key])
+      .find((value) => value != null);
+    if (preferred != null && preferred !== content) return backendMessageText(preferred);
+    try {
+      return JSON.stringify(content);
+    } catch {
+      return String(content);
+    }
+  }
+  return String(content);
+}
+
+function backendCreatedAt(value: unknown): string {
+  if (typeof value === "string" && value.trim()) return value;
+  return new Date().toISOString();
+}
+
 function messageToDomain(message: SpaceProtocolMessage): SpaceMessage {
+  const content = backendMessageText(message.content);
   return {
     id: String(message.id),
     spaceId: spaceIdFromSource(message.space_id),
     senderId: participantIdFromSource(message.sender_id),
-    kind: message.content.startsWith("流程任务已完成") ? "flow_event" : "message",
-    blocks: [{ type: "text", text: message.content }],
-    createdAt: message.created_at,
+    kind: content.startsWith("流程任务已完成") ? "flow_event" : "message",
+    blocks: [{ type: "text", text: content }],
+    createdAt: backendCreatedAt(message.created_at),
     deliveryState: "sent"
   };
+}
+
+function conversationMessageToDomain(message: Message): SpaceMessage {
+  const content = backendMessageText(message.content);
+  return {
+    id: String(message.id),
+    spaceId: conversationIdFromSource(message.conversation_id),
+    senderId: participantIdFromSource(message.sender_id),
+    kind: "message",
+    blocks: [{ type: "text", text: content }],
+    createdAt: backendCreatedAt(message.created_at),
+    deliveryState: "sent"
+  };
+}
+
+function conversationPeerSourceId(conversation: Conversation, currentUserId: number): number {
+  return conversation.user_low_id === currentUserId ? conversation.user_high_id : conversation.user_low_id;
 }
 
 function flowToDomain(flow: FlowResponse): CollaborationFlow {
@@ -133,7 +189,22 @@ function flowToDomain(flow: FlowResponse): CollaborationFlow {
 export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
   private readonly participantCache = new Map<string, Participant>();
 
-  constructor(private readonly rust: RustHttpAdapter, private readonly currentUserId: number) {}
+  constructor(private readonly rust: RustHttpAdapter, private readonly currentUserId: number, private readonly profile?: UserProfile, private readonly currentUsername?: string) {}
+
+  private selfParticipant(): Participant {
+    return {
+      id: participantIdFromSource(this.currentUserId),
+      sourceId: this.currentUserId,
+      displayId: this.currentUsername,
+      kind: profileIdentityKind(this.profile?.identity || "private"),
+      displayName: this.profile?.displayName || "我",
+      avatarUrl: this.profile?.avatarUrl || undefined,
+      title: "当前账号",
+      relationship: "self",
+      description: this.profile?.bio || "当前真实后端登录身份。",
+      region: this.profile?.region || undefined
+    };
+  }
 
   private async friendList(): Promise<UserSummary[]> {
     return this.rust.listFriends().catch(() => []);
@@ -167,10 +238,22 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
     return spaces.find((space) => space.id === sourceId) || null;
   }
 
+  private async rawConversation(spaceId: string): Promise<Conversation | null> {
+    const sourceId = sourceIdFromRoute(spaceId, "conversation-");
+    const conversations = await this.rust.listConversations();
+    return conversations.find((conversation) => conversation.id === sourceId) || null;
+  }
+
   private async sourceSpaceId(spaceId: string): Promise<number> {
     const space = await this.rawSpace(spaceId);
     if (!space) throw new Error("没有找到协作空间");
     return space.id;
+  }
+
+  private async sourceConversationId(spaceId: string): Promise<number> {
+    const conversation = await this.rawConversation(spaceId);
+    if (!conversation) throw new Error("没有找到一对一会话");
+    return conversation.id;
   }
 
   private async memberSourceIds(spaceId: number, ownerId?: number): Promise<number[]> {
@@ -191,12 +274,33 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
     return {
       id: spaceIdFromSource(space.id),
       sourceSpaceId: space.id,
+      displayId: space.display_id || undefined,
       kind: participantIds.length <= 2 && spaceType(space) !== "workflow" ? "direct" : "multi",
       title: space.name,
+      avatarUrl: space.avatar_url || undefined,
       participantIds,
-      lastPreview: lastMessage?.content || "真实协作空间",
-      lastActivityAt: lastMessage?.created_at,
+      description: space.description || undefined,
+      announcement: space.announcement || undefined,
+      lastPreview: lastMessage ? backendMessageText(lastMessage.content) : "真实协作空间",
+      lastActivityAt: lastMessage ? backendCreatedAt(lastMessage.created_at) : undefined,
       hasActiveFlow: flows.length > 0
+    };
+  }
+
+  private async mapConversation(conversation: Conversation): Promise<CollaborationSpace> {
+    const peerSourceId = conversationPeerSourceId(conversation, this.currentUserId);
+    const peerId = participantIdFromSource(peerSourceId);
+    const peer = this.participantCache.get(peerId);
+    const messages = await this.rust.listMessages(conversation.id).catch(() => []);
+    const lastMessage = messages.at(-1);
+    return {
+      id: conversationIdFromSource(conversation.id),
+      sourceConversationId: conversation.id,
+      kind: "direct",
+      title: peer ? peer.displayName : `用户 ${peerSourceId}`,
+      participantIds: [participantIdFromSource(this.currentUserId), peerId],
+      lastPreview: lastMessage ? backendMessageText(lastMessage.content) : "一对一会话",
+      lastActivityAt: lastMessage ? backendCreatedAt(lastMessage.created_at) : undefined
     };
   }
 
@@ -207,32 +311,56 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
   }
 
   async listSpaces(): Promise<CollaborationSpace[]> {
-    const spaces = await this.rust.listSpaces();
-    return Promise.all(spaces.map((space) => this.mapSpace(space)));
+    const [spaces, conversations, friends] = await Promise.all([
+      this.rust.listSpaces(),
+      this.rust.listConversations().catch(() => []),
+      this.friendList()
+    ]);
+    this.cacheParticipants(friends.map((friend) => userParticipant(friend)));
+    const mapped = await Promise.all([
+      ...spaces.map((space) => this.mapSpace(space)),
+      ...conversations.map((conversation) => this.mapConversation(conversation))
+    ]);
+    return mapped.sort((a, b) => Date.parse(b.lastActivityAt || "") - Date.parse(a.lastActivityAt || ""));
   }
 
   async getSpace(spaceId: string): Promise<CollaborationSpace | null> {
+    if (spaceId.startsWith("conversation-")) {
+      const conversation = await this.rawConversation(spaceId);
+      return conversation ? this.mapConversation(conversation) : null;
+    }
     const space = await this.rawSpace(spaceId);
     return space ? this.mapSpace(space) : null;
   }
 
   async listMessages(spaceId: string): Promise<SpaceMessage[]> {
+    if (spaceId.startsWith("conversation-")) {
+      const sourceConversationId = await this.sourceConversationId(spaceId);
+      const messages = await this.rust.listMessages(sourceConversationId);
+      return messages.map(conversationMessageToDomain);
+    }
     const sourceSpaceId = await this.sourceSpaceId(spaceId);
     const messages = await this.rust.listSpaceMessages(sourceSpaceId);
     return messages.map(messageToDomain);
   }
 
   async sendMessage(spaceId: string, content: string): Promise<SpaceMessage> {
+    if (spaceId.startsWith("conversation-")) {
+      const sourceConversationId = await this.sourceConversationId(spaceId);
+      const message = await this.rust.sendMessage(sourceConversationId, content);
+      return conversationMessageToDomain(message);
+    }
     const sourceSpaceId = await this.sourceSpaceId(spaceId);
     const message = await this.rust.createSpaceMessage(sourceSpaceId, content);
     return messageToDomain(message);
   }
 
   async listParticipants(): Promise<Participant[]> {
-    const [friends, requests, spaces] = await Promise.all([
+    const [friends, requests, spaces, conversations] = await Promise.all([
       this.friendList(),
       this.contactRequests(),
-      this.rust.listSpaces().catch(() => [])
+      this.rust.listSpaces().catch(() => []),
+      this.rust.listConversations().catch(() => [])
     ]);
     const friendParticipants = friends.map((friend) => userParticipant(friend));
     const requestParticipants = requests.map((request) => request.participant);
@@ -248,17 +376,13 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
     await Promise.all(spaces.map(async (space) => {
       (await this.memberSourceIds(space.id, space.owner_id)).forEach((memberId) => memberIds.add(memberId));
     }));
+    conversations.forEach((conversation) => {
+      memberIds.add(conversation.user_low_id);
+      memberIds.add(conversation.user_high_id);
+    });
     const memberParticipants = [...memberIds].map((memberId) => {
       if (memberId === this.currentUserId) {
-        return {
-          id: participantIdFromSource(this.currentUserId),
-          sourceId: this.currentUserId,
-          kind: "unknown" as const,
-          displayName: "我",
-          title: "当前账号",
-          relationship: "self" as const,
-          description: "当前真实后端登录身份。"
-        };
+        return this.selfParticipant();
       }
       return knownBySource.get(memberId) || {
         id: participantIdFromSource(memberId),
@@ -271,15 +395,7 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
       };
     });
     return this.mergeParticipants([
-      {
-        id: participantIdFromSource(this.currentUserId),
-        sourceId: this.currentUserId,
-        kind: "unknown",
-        displayName: "我",
-        title: "当前账号",
-        relationship: "self",
-        description: "当前真实后端登录身份。"
-      },
+      this.selfParticipant(),
       ...friendParticipants,
       ...requestParticipants,
       ...memberParticipants
@@ -315,8 +431,10 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
     return this.cacheParticipants(users.map((user) => userParticipant(user, friendIds.has(user.id) ? "connected" : requestRelationships.get(user.id) || "none")));
   }
 
-  async createSpace(input: { title: string; participantIds: string[] }): Promise<CollaborationSpace> {
+  async createSpace(input: { title: string; participantIds: string[]; displayId?: string; avatarUrl?: string }): Promise<CollaborationSpace> {
     const title = input.title.trim();
+    if (input.displayId?.trim()) throw new Error("当前后端还没有接入自定义空间 ID，暂时不能保存用户设置的空间 ID");
+    if (input.avatarUrl?.trim()) throw new Error("当前后端还没有接入空间头像，暂时不能保存空间头像");
     if (!title) throw new Error("请填写协作空间名称");
     if (!input.participantIds.length) throw new Error("请至少选择一位参与者");
     const participants = await Promise.all(input.participantIds.map((participantId) => this.getParticipant(participantId)));
@@ -332,11 +450,10 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
   async createDirectSpace(participantId: string): Promise<CollaborationSpace> {
     const sourceId = await this.sourceParticipantId(participantId);
     const participant = await this.getParticipant(participantId);
-    if (participant?.relationship !== "connected") throw new Error("请先建立联系，再开始一对一协作空间");
-    const name = `与${participant?.displayName || `用户 ${sourceId}`}的协作空间`;
-    const space = await this.rust.createSpace({ name });
-    await this.rust.addSpaceMember(space.id, sourceId);
-    return this.mapSpace(space);
+    if (participant?.relationship !== "connected") throw new Error("请先建立联系，再开始一对一聊天");
+    if (participant) this.participantCache.set(participant.id, participant);
+    const conversation = await this.rust.createDirectConversation(sourceId);
+    return this.mapConversation(conversation);
   }
 
   async listContactRequests(): Promise<ContactRequest[]> {
@@ -361,6 +478,7 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
         description: "来自真实后端的参与者。"
       },
       message: request.message,
+      createdAt: request.created_at,
       status: request.status as ContactRequest["status"]
     };
     this.participantCache.set(contactRequest.participant.id, contactRequest.participant);
@@ -402,6 +520,7 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
 
   async listFlows(spaceId?: string): Promise<CollaborationFlow[]> {
     if (spaceId) {
+      if (spaceId.startsWith("conversation-")) return [];
       const sourceSpaceId = await this.sourceSpaceId(spaceId);
       const flows = await this.rust.listFlows(sourceSpaceId);
       return flows.map(flowToDomain);
@@ -418,6 +537,7 @@ export class ConnectedWorkspaceAdapter implements WorkspaceAdapter {
   }
 
   async createFlow(input: { spaceId: string; title?: string }): Promise<CollaborationFlow> {
+    if (input.spaceId.startsWith("conversation-")) throw new Error("一对一聊天暂不支持创建协作流程");
     const sourceSpaceId = await this.sourceSpaceId(input.spaceId);
     const name = input.title?.trim() || "新的协作流程";
     const flow = await this.rust.createFlow(sourceSpaceId, {

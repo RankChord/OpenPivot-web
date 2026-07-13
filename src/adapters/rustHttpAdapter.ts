@@ -139,7 +139,7 @@ export class RustHttpAdapter implements OpenPivotAdapter {
   }
 
   createDirectConversation(userId: number): Promise<Conversation> {
-    return this.requestJson("/conversations/direct", {
+    return this.requestJsonWithSlashFallback("/conversations/direct", {
       method: "POST",
       body: { user_id: userId }
     });
@@ -157,7 +157,7 @@ export class RustHttpAdapter implements OpenPivotAdapter {
   }
 
   createSpace(input: { name: string }): Promise<SpaceResponse> {
-    return this.requestJson("/spaces/", {
+    return this.requestJsonWithSlashFallback("/spaces", {
       method: "POST",
       body: input
     });
@@ -221,12 +221,13 @@ export class RustHttpAdapter implements OpenPivotAdapter {
     });
   }
 
-  private async requestJsonWithSlashFallback<T>(path: string): Promise<T> {
+  private async requestJsonWithSlashFallback<T>(path: string, options: RequestOptions = {}): Promise<T> {
     try {
-      return await this.requestJson<T>(path);
+      return await this.requestJson<T>(path, options);
     } catch (error) {
-      if (error instanceof OpenPivotApiError && error.status === 404 && !path.endsWith("/")) {
-        return this.requestJson<T>(`${path}/`);
+      if (error instanceof OpenPivotApiError && error.status === 404) {
+        const alternatePath = path.endsWith("/") ? path.slice(0, -1) : `${path}/`;
+        if (alternatePath !== path) return this.requestJson<T>(alternatePath, options);
       }
       throw error;
     }

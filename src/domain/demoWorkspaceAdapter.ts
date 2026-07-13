@@ -118,6 +118,7 @@ function createInitialStore(): DemoStore {
   const spaces: CollaborationSpace[] = [
     {
       id: "core",
+      displayId: "core",
       kind: "multi",
       title: "OpenPivot 核心开发",
       participantIds: ["me", "lin", "chen", "orion", "forge", "atlas"],
@@ -129,6 +130,7 @@ function createInitialStore(): DemoStore {
     },
     {
       id: "lin",
+      displayId: "lin",
       kind: "direct",
       title: "与林舟的对话",
       participantIds: ["me", "lin"],
@@ -137,6 +139,7 @@ function createInitialStore(): DemoStore {
     },
     {
       id: "release",
+      displayId: "release",
       kind: "multi",
       title: "发布协作室",
       participantIds: ["me", "lin", "chen", "atlas"],
@@ -275,6 +278,7 @@ function createInitialStore(): DemoStore {
       id: "request-mira",
       participant: participants.find((participant) => participant.id === "mira")!,
       message: "我可以加入协议设计协作吗？",
+      createdAt: "2026-06-22T09:10:00+08:00",
       status: "pending"
     }
   ];
@@ -300,6 +304,15 @@ function wait<T>(value: T): Promise<T> {
 
 function byTimeDesc<T extends { lastActivityAt?: string; createdAt?: string }>(items: T[]): T[] {
   return [...items].sort((a, b) => String(b.lastActivityAt || b.createdAt || "").localeCompare(String(a.lastActivityAt || a.createdAt || "")));
+}
+
+function normalizeSpaceDisplayId(value?: string): string {
+  const normalized = (value || "").trim().toLowerCase();
+  if (!normalized) return "";
+  if (!/^[a-z0-9][a-z0-9_-]{2,31}$/.test(normalized)) {
+    throw new Error("空间 ID 只能使用 3-32 位字母、数字、下划线或短横线");
+  }
+  return normalized;
 }
 
 export class DemoWorkspaceAdapter implements WorkspaceAdapter {
@@ -420,7 +433,7 @@ export class DemoWorkspaceAdapter implements WorkspaceAdapter {
     return wait(space);
   }
 
-  async createSpace(input: { title: string; participantIds: string[] }): Promise<CollaborationSpace> {
+  async createSpace(input: { title: string; participantIds: string[]; displayId?: string; avatarUrl?: string }): Promise<CollaborationSpace> {
     const selected = Array.from(new Set(["me", ...input.participantIds])).filter((id) => {
       return store.participants.some((participant) => participant.id === id);
     });
@@ -431,11 +444,15 @@ export class DemoWorkspaceAdapter implements WorkspaceAdapter {
       .map((id) => store.participants.find((participant) => participant.id === id))
       .filter((participant) => participant?.relationship !== "connected");
     if (unavailable.length) throw new Error("只能邀请已建立联系的参与者加入协作空间");
-    const id = `space-${Date.now()}`;
+    const displayId = normalizeSpaceDisplayId(input.displayId) || `space-${Date.now()}`;
+    if (store.spaces.some((space) => space.displayId === displayId || space.id === displayId)) throw new Error("空间 ID 已被使用");
+    const id = displayId;
     const space: CollaborationSpace = {
       id,
+      displayId,
       kind: selected.length === 2 ? "direct" : "multi",
       title: input.title.trim(),
+      avatarUrl: input.avatarUrl,
       participantIds: selected,
       lastActivityAt: new Date().toISOString(),
       lastPreview: "新的协作空间已创建。"
@@ -454,6 +471,26 @@ export class DemoWorkspaceAdapter implements WorkspaceAdapter {
     return wait(space);
   }
 
+  async updateSpace(spaceId: string, input: { title?: string; avatarUrl?: string; description?: string; announcement?: string }): Promise<CollaborationSpace> {
+    const space = store.spaces.find((item) => item.id === spaceId);
+    if (!space) throw new Error("没有找到协作空间");
+    if (input.title !== undefined) {
+      const title = input.title.trim();
+      if (!title) throw new Error("请填写协作空间名称");
+      space.title = title;
+    }
+    if (input.avatarUrl !== undefined) space.avatarUrl = input.avatarUrl.trim();
+    if (input.description !== undefined) space.description = input.description.trim();
+    if (input.announcement !== undefined) {
+      const announcement = input.announcement.trim();
+      if (announcement && announcement !== space.announcement) {
+        space.announcementHistory = [space.announcement, ...(space.announcementHistory || [])].filter(Boolean) as string[];
+      }
+      space.announcement = announcement;
+    }
+    return wait(space);
+  }
+
   async listContactRequests(): Promise<ContactRequest[]> {
     return wait(store.requests.filter((request) => request.status === "pending"));
   }
@@ -466,6 +503,7 @@ export class DemoWorkspaceAdapter implements WorkspaceAdapter {
       id: `outbound-${participantId}-${Date.now()}`,
       participant,
       message,
+      createdAt: new Date().toISOString(),
       status: "pending"
     };
     store.requests.push(request);

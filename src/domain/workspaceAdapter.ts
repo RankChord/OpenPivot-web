@@ -19,8 +19,9 @@ export interface WorkspaceAdapter {
   listParticipants(): Promise<Participant[]>;
   getParticipant(participantId: string): Promise<Participant | null>;
   searchParticipants(query: string): Promise<Participant[]>;
-  createSpace?(input: { title: string; participantIds: string[] }): Promise<CollaborationSpace>;
+  createSpace?(input: { title: string; participantIds: string[]; displayId?: string; avatarUrl?: string }): Promise<CollaborationSpace>;
   createDirectSpace(participantId: string): Promise<CollaborationSpace>;
+  updateSpace?(spaceId: string, input: { title?: string; avatarUrl?: string; description?: string; announcement?: string }): Promise<CollaborationSpace>;
 
   listContactRequests(): Promise<ContactRequest[]>;
   createContactRequest(participantId: string, message?: string): Promise<ContactRequest>;
